@@ -1,0 +1,56 @@
+{
+  "id": "SUBJECT-vehiculos",
+  "technicalId": "subject-vehiculos",
+  "name": "Vehículos",
+  "version": "0.1.0",
+  "image": "ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0",
+  "compat": {
+    "nox": ">=0.5.0",
+    "kit": "^0.5.0"
+  },
+  "api": {
+    "basePath": "/",
+    "port": 3000,
+    "healthPath": "/health"
+  },
+  "permissions": [
+    {
+      "id": "subject.vehiculos.vehicle.read",
+      "label": "Ver Vehículos"
+    },
+    {
+      "id": "subject.vehiculos.vehicle.write",
+      "label": "Editar Vehículos"
+    }
+  ],
+  "pages": [
+    {
+      "id": "vehiculos.vehicle",
+      "path": "vehicle",
+      "permission": "subject.vehiculos.vehicle.read"
+    }
+  ],
+  "menu": [
+    {
+      "id": "vehiculos.root",
+      "label": "Vehículos",
+      "order": 0,
+      "children": [
+        {
+          "id": "vehiculos.vehicle",
+          "label": "Vehículos",
+          "order": 10,
+          "pageId": "vehiculos.vehicle",
+          "path": "vehicle",
+          "permission": "subject.vehiculos.vehicle.read"
+        }
+      ]
+    }
+  ],
+  "storage": {
+    "domain": "shared-nox-postgres"
+  },
+  "resources": {
+    "vehicle": "vehicle"
+  }
+}
