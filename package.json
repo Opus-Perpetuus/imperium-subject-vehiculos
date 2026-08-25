@@ -8,7 +8,8 @@
     "dev": "bun --watch run src/server.ts",
     "test": "SUBJECT_AUTH=off KIRLET_AUTH=off bun test --max-concurrency 1",
     "manifest:emit": "bun run scripts/emit-manifest.ts",
-    "docker:build": "docker build --build-context kit=../../kit -t ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0 -t ghcr.io/opus-perpetuus/subject-vehiculos:latest ."
+    "docker:build": "docker build --build-context kit=../../kit -t ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0 -t ghcr.io/opus-perpetuus/subject-vehiculos:latest .",
+    "local": "bun run scripts/dev-local.ts"
   },
   "dependencies": {
     "@opus-perpetuus/imperium-core-kit": "file:./vendor/kit",
