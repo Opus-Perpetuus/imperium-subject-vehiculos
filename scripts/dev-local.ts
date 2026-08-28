@@ -1,11 +1,11 @@
 /**
- * Levanta ESTE súbdito en desarrollo contra un núcleo v13 ya en marcha.
+ * Levanta ESTE app en desarrollo contra un núcleo v13 ya en marcha.
  *
  *   bun run local
  *
  * Instala deps, espera http://127.0.0.1:3100, para el contenedor Docker del
- * súbdito (si el stack compose está up), registra la URL local en el núcleo,
- * instala el schema de este súbdito y arranca bun --watch.
+ * app (si el stack compose está up), registra la URL local en el núcleo,
+ * instala el schema de esta app y arranca bun --watch.
  *
  * Requiere `yarn dev:modular-stack` (o el núcleo en :3100). Override:
  *   CORE_URL  PORT  CORE_SUBJECT_GATEWAY_SECRET  IMPERIUM_MODULAR_ROOT
@@ -211,7 +211,7 @@ async function main() {
     await Bun.sleep(200);
   }
   if (!up) {
-    console.error("subject-dev-local: el súbdito no levantó /health");
+    console.error("subject-dev-local: la app no levantó /health");
     child.kill("SIGTERM");
     process.exit(1);
   }
