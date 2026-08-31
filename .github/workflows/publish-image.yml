@@ -28,5 +28,3 @@ jobs:
             -t ghcr.io/opus-perpetuus/subject-vehiculos:latest \
             --push \
             .
-          docker push ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0
-          docker push ghcr.io/opus-perpetuus/subject-vehiculos:latest
