@@ -8,6 +8,7 @@ permissions:
   packages: write
 jobs:
   docker:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip image]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,3 +29,13 @@ jobs:
             -t ghcr.io/opus-perpetuus/subject-vehiculos:latest \
             --push \
             .
+      - name: Notify n8n
+        continue-on-error: true
+        env:
+          HOOK: ${{ secrets.SUBJECT_N8N_WEBHOOK }}
+          DEFAULT_HOOK: https://nochon.codice-progressio.online/webhook/imperium-subject
+        run: |
+          HOOK="${HOOK:-$DEFAULT_HOOK}"
+          curl -fsS -X POST "$HOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0\",\"tag\":\"0.1.0\",\"sha\":\"${{ github.sha }}\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
