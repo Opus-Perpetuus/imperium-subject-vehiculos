@@ -4,15 +4,18 @@
 
 /**
  * Browser / Angular UI surface of the kit.
- * Omits Node-only modules (`kirlet/identity` HMAC via node:crypto).
+ * Omits Node-only modules (identity HMAC via node:crypto).
  * Types + pure `kirlet_identity_can` remain available.
  */
 
 export * from './api/envelope.js';
 export * from './auth/types.js';
+export * from './auth/principal.js';
+export * from './auth/public-landing-flag.js';
 export * from './contrast/pick-readable-text-color.js';
 export * from './descriptors/api-data-source.js';
 export * from './descriptors/ui-descriptor.js';
+export * from './descriptors/landing.js';
 export * from './descriptors/feature-shell.js';
 // Kirtexto is DOM-free by design (the purifier is injected), so the whole
 // pipeline is safe to ship to the browser.
@@ -20,6 +23,7 @@ export * from './html/html-profile.js';
 export * from './html/normalize-html.js';
 export * from './html/sanitize-html.js';
 export * from './icons/icon-names.js';
+export * from './icons/subject-logos.js';
 export * from './kirlet/manifest.js';
 export * from './kirlet/manifest-validate.js';
 export * from './kirlet/semver-lite.js';

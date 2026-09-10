@@ -23,13 +23,6 @@
       "label": "Editar Vehículos"
     }
   ],
-  "pages": [
-    {
-      "id": "vehiculos.vehicle",
-      "path": "vehicle",
-      "permission": "subject.vehiculos.vehicle.read"
-    }
-  ],
   "menu": [
     {
       "id": "vehiculos.root",
@@ -39,16 +32,25 @@
         {
           "id": "vehiculos.vehicle",
           "label": "Vehículos",
-          "order": 10,
           "pageId": "vehiculos.vehicle",
+          "order": 10,
           "path": "vehicle",
-          "permission": "subject.vehiculos.vehicle.read"
+          "permission": "subject.vehiculos.vehicle.read",
+          "icon": "document"
         }
       ]
     }
   ],
+  "pages": [
+    {
+      "id": "vehiculos.vehicle",
+      "path": "vehicle",
+      "permission": "subject.vehiculos.vehicle.read"
+    }
+  ],
   "storage": {
-    "domain": "shared-nox-postgres"
+    "domain": "shared-nox-postgres",
+    "files": false
   },
   "resources": {
     "vehicle": "vehicle"

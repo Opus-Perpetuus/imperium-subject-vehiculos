@@ -1,40 +1,31 @@
-# @opus-perpetuus/kirel-nox-kit
+# @opus-perpetuus/imperium-core-kit
 
-Shared TypeScript contracts and **kirlet v2 runtime** for **Kirel NOX** (UI descriptors, manifest, envelopes, `define_kirlet` / `serve_kirlet`).
+Contratos TypeScript y runtime de **apps Imperium** (descriptores UI, manifest,
+envelopes, `define_subject` / `serve_subject`).
 
-**Version:** 0.5.0 — see [`docs/contracts/kirlet-development.md`](../../docs/contracts/kirlet-development.md) for the authoring standard.
+Paquete: `@opus-perpetuus/imperium-core-kit`. Una app = un repo
+`imperium-subject-<slug>` + imagen GHCR. La app no abre Postgres; el núcleo
+aplica el DDL.
 
-## npm naming (Opus Perpetuus)
+La carpeta `src/kirlet/` es el runtime interno. El autorío Imperium usa los
+alias de `src/index.ts`: `define_subject`, `serve_subject`,
+`assert_subject_conformance`, `SubjectTableDecl`.
 
-| Conceptual path | npm package name |
-|-----------------|------------------|
-| `@opus-perpetuus/kirel-nox/kit` | `@opus-perpetuus/kirel-nox-kit` |
-
-## Install
-
-```bash
-npm install @opus-perpetuus/kirel-nox-kit
-# or file: dependency from a sibling kirlet:
-# "@opus-perpetuus/kirel-nox-kit": "file:../kirel-nox/libs/kit"
-```
-
-## Kirlet v2 surface (Node)
+## Superficie (Node)
 
 ```ts
 import {
-  define_kirlet,
+  define_subject,
   define_module,
   define_crud,
   define_routes,
-  serve_kirlet,
-  create_kirlet_test_context,
-  assert_kirlet_conformance,
-  MemoryNoxServices,
-  MemoryKirletDataClient,
-} from "@opus-perpetuus/kirel-nox-kit";
+  serve_subject,
+  create_subject_test_context,
+  assert_subject_conformance,
+} from "@opus-perpetuus/imperium-core-kit";
 
-export const KIRLET = define_kirlet({
-  id: "KIRLET-demo",
+export const SUBJECT = define_subject({
+  id: "SUBJECT-demo",
   name: "Demo",
   compat: { nox: ">=0.5.0", kit: "^0.5.0" },
   modules: [
@@ -45,46 +36,19 @@ export const KIRLET = define_kirlet({
         resource: "notes",
         fields: { title: { type: "string", required: true, search: true } },
       }),
-      tables: [/* KirletTableDecl[] */],
+      tables: [/* SubjectTableDecl[] */],
     }),
   ],
 });
 
-// production
-// serve_kirlet(KIRLET);
-
-// tests
-const ctx = create_kirlet_test_context(KIRLET);
-await ctx.fetch(new Request("http://t/health"));
+serve_subject(SUBJECT);
 ```
 
-### Modules
-
-| Export | Purpose |
-|--------|---------|
-| `compile_route` / `match_route` / `match_route_table` | Typed route matcher (`method_mismatch` vs `miss`) |
-| `json_response` / `error_response` / `KirletHttpError` | HTTP helpers |
-| `resolve_identity` / `require_access` | Runtime auth |
-| `resolve_kirlet_config` | Env config + data mode |
-| `FsKirletFileStore` / `MemoryKirletFileStore` | Blob store |
-| `NoxServices` + Memory/HTTP clients | history, counters, params, notify, logs |
-| `define_routes` / `define_module` / `define_crud` | Authorship |
-| `define_kirlet` | Manifest + schema derivation (`resources` map) |
-| `serve_kirlet` | Full process shell |
-| `assert_kirlet_conformance` | CI structure checks |
-
-Browser/Angular should import `@opus-perpetuus/kirel-nox-kit/browser` (no Node crypto).
+Angular importa `@opus-perpetuus/imperium-core-kit/browser` (sin `node:crypto`).
 
 ## Build / test
 
 ```bash
 bun run build
 bun test src
-```
-
-## Publish (maintainers)
-
-```bash
-bun run build
-npm publish --access public
 ```
