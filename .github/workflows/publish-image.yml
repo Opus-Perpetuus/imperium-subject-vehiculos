@@ -20,12 +20,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
         run: |
+          VERSION="$(jq -r .version package.json)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           docker buildx build --build-context kit=./vendor/kit \
             --label org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
             --annotation org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
             --annotation index:org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
             --annotation manifest:org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
-            -t ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0 \
+            -t ghcr.io/opus-perpetuus/subject-vehiculos:"$VERSION" \
             -t ghcr.io/opus-perpetuus/subject-vehiculos:latest \
             --push \
             .
@@ -38,4 +40,4 @@ jobs:
           HOOK="${HOOK:-$DEFAULT_HOOK}"
           curl -fsS -X POST "$HOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:0.1.0\",\"tag\":\"0.1.0\",\"sha\":\"${{ github.sha }}\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+            -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:$VERSION\",\"tag\":\"$VERSION\",\"sha\":\"${{ github.sha }}\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
