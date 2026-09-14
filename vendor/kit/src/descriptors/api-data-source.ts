@@ -120,11 +120,18 @@ export function resolve_api_data_source(
   raw: unknown,
   options?: { api_prefix?: string },
 ): ApiDataSourceRef {
-  const result = parse_api_data_source(raw, options);
-  if (!result.ok) {
-    throw new Error(result.error);
+  // El frontend Angular compila sin `strictNullChecks`, y ahí TS no estrecha
+  // esta unión por su discriminante booleano. Se leen los dos campos de forma
+  // explícita para que el archivo compile igual en el kit y en el front.
+  const result = parse_api_data_source(raw, options) as {
+    ok: boolean;
+    ref?: ApiDataSourceRef;
+    error?: string;
+  };
+  if (result.ok && result.ref) {
+    return result.ref;
   }
-  return result.ref;
+  throw new Error(result.error ?? "api:// inválido");
 }
 
 /**

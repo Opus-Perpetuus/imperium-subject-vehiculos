@@ -15,6 +15,7 @@ export * from './auth/public-landing-flag.js';
 export * from './contrast/pick-readable-text-color.js';
 export * from './descriptors/api-data-source.js';
 export * from './descriptors/ui-descriptor.js';
+export * from './descriptors/ui-action.js';
 export * from './descriptors/landing.js';
 export * from './descriptors/feature-shell.js';
 export * from './html/html-profile.js';

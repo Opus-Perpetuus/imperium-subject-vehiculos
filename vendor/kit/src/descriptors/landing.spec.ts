@@ -6,6 +6,7 @@ import {
   plan_landing_document,
   sanitize_page_document_html,
 } from "./landing.js";
+import { validate_page_descriptor } from "./ui-descriptor.js";
 import {
   is_allowed_ui_component,
   plan_ui_node,
@@ -148,5 +149,31 @@ describe("plan_landing_document", () => {
     const html = String(html_child?.props?.["html"] ?? "");
     expect(html).not.toContain("script");
     expect(html).toContain("ok");
+  });
+});
+
+describe("la landing que trae el producto", () => {
+  test("una instalacion nueva abre con un sitio terminado, no con un cartel de obra", () => {
+    // Antes eran dos bloques: "# Bienvenido / Configura esta landing desde el
+    // administrador". La plantilla rica existia solo detras de un boton del
+    // editor, asi que ningun tenant nuevo la veia jamas.
+    const doc = default_home_document();
+    const page = doc["page"] as { children: Array<Record<string, unknown>> };
+    expect(page.children.length).toBeGreaterThanOrEqual(6);
+    const ids = new Set(page.children.map((c) => String(c["component"])));
+    expect(ids.has("nox.stack")).toBe(true);
+    expect(ids.has("nox.stats")).toBe(true);
+    expect(ids.has("nox.collapsible")).toBe(true);
+    expect(JSON.stringify(doc)).not.toContain("Configura esta landing");
+  });
+
+  test("la valida el validador real, que es quien la rechazaria al sembrarla", () => {
+    expect(validate_page_descriptor(default_home_document()).ok).toBe(true);
+  });
+
+  test("lleva portada con imagen de muestra y llamada a la sesion publica", () => {
+    const json = JSON.stringify(default_home_document());
+    expect(json).toContain("assets/images/landing/");
+    expect(json).toContain("cuenta/entrar");
   });
 });

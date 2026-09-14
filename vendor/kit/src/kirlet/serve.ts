@@ -345,6 +345,13 @@ export function serve_kirlet(
         return id_result.response;
       }
       const identity = id_result.identity;
+      // Una identidad firmada manda sobre el flag: con `KIRLET_AUTH=off` pero
+      // un núcleo que firma, los grants del usuario real sí se comprueban. El
+      // bypass del flag queda solo para el arranque suelto, donde no hay firma
+      // y la identidad es el admin sintético.
+      const access_opts = {
+        auth_disabled: config.auth_disabled && !id_result.verified,
+      };
 
       if (is_meta_path(path) || path === "/seed") {
         const meta = await handle_meta(
@@ -386,7 +393,7 @@ export function serve_kirlet(
             definition.slug,
             mod.resource,
             action,
-            { auth_disabled: config.auth_disabled },
+            access_opts,
           );
           if (denied) {
             status = denied.status;

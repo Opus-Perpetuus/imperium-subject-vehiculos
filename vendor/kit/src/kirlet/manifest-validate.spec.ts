@@ -350,3 +350,35 @@ describe("check_kirlet_compat", () => {
     expect(good.ok).toBe(true);
   });
 });
+
+describe("sección pública declarada", () => {
+  function manifest_with_segment(segment: unknown) {
+    return {
+      ...hr_manifest_0_3,
+      public: {
+        pages: [{ id: "hr.employees", access: "anonymous", segment }],
+      },
+    };
+  }
+
+  test("una sección normal pasa y llega al manifiesto", () => {
+    const result = validate_kirlet_manifest(manifest_with_segment("vacantes"));
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.public?.pages?.[0]?.segment).toBe("vacantes");
+  });
+
+  test("vacía es el inicio del escaparate, no un error", () => {
+    const result = validate_kirlet_manifest(manifest_with_segment(""));
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.public?.pages?.[0]?.segment).toBe("");
+  });
+
+  test("una sección que se sale de su tramo de URL se rechaza", () => {
+    // El manifiesto lo escribe la app pero lo consume el sitio público al
+    // construir rutas: una barra o un `..` saldría del escaparate.
+    for (const bad of ["../admin", "a/b", "Catálogo", "con espacio"]) {
+      const result = validate_kirlet_manifest(manifest_with_segment(bad));
+      expect(result.ok).toBe(false);
+    }
+  });
+});

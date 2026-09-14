@@ -62,7 +62,17 @@ export interface KirletManifestPublicFiles {
 }
 
 export interface KirletManifestPublic {
-  pages?: Array<{ id: string; access: KirletPublicAccess }>;
+  pages?: Array<{
+    id: string;
+    access: KirletPublicAccess;
+    /**
+     * Sección bajo la que el sitio público monta la página (`catalogo`).
+     * Vacío = es el inicio del escaparate. Ausente = que decida el anfitrión.
+     */
+    segment?: string;
+    /** Nombre que ve el visitante en la barra de secciones. */
+    label?: string;
+  }>;
   api?: Array<{
     pathPrefix: string;
     access: KirletPublicAccess;

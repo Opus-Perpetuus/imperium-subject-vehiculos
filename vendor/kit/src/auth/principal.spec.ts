@@ -42,11 +42,31 @@ describe("authenticate_for_surface", () => {
     expect(r.destination).not.toContain("internal");
   });
 
-  test("an internal user is rejected by public login", () => {
+  test("an internal user also enters through public login, as internal", () => {
+    // La parte pública no es un sistema aparte: el personal entra ahí con la
+    // misma cuenta. Rechazarlo obligaba a tener un usuario público duplicado.
     const r = authenticate_for_surface("public", staff_user, true);
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.message).toBe(GENERIC_CREDENTIALS_MESSAGE);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.kind).toBe("internal");
+  });
+
+  test("public login lands on the public site even for staff", () => {
+    // El destino por defecto es el sitio público; pasar al sistema interno lo
+    // decide la persona en la pantalla, no el servidor.
+    const r = authenticate_for_surface("public", staff_user, true);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.destination).toBe(PUBLIC_LOGIN_DESTINATION);
+    expect(r.destination).not.toBe(INTERNAL_HOME_PATH);
+  });
+
+  test("public login still rejects wrong credentials and inactive users", () => {
+    expect(authenticate_for_surface("public", staff_user, false).ok).toBe(false);
+    expect(
+      authenticate_for_surface("public", { ...staff_user, is_active: false }, true)
+        .ok,
+    ).toBe(false);
   });
 
   test("a user with no type still authenticates as staff", () => {

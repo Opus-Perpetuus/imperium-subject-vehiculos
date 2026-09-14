@@ -78,6 +78,37 @@ describe("runtime-auth", () => {
     }
   });
 
+  test("auth_disabled honra la identidad firmada del gateway", () => {
+    _reset_auth_off_warned_for_tests();
+    const r = resolve_identity(signed_req(), "/employees", {
+      technical_id: "kirlet-hr",
+      gateway_secret: secret,
+      auth_disabled: true,
+      on_auth_off: () => {},
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.verified).toBe(true);
+      expect(r.identity?.user_id).toBe("u1");
+      expect(r.identity?.is_admin).toBe(false);
+    }
+  });
+
+  test("auth_disabled sin firma sigue cayendo al admin sintético", () => {
+    _reset_auth_off_warned_for_tests();
+    const r = resolve_identity(new Request("http://x/employees"), "/employees", {
+      technical_id: "kirlet-hr",
+      gateway_secret: secret,
+      auth_disabled: true,
+      on_auth_off: () => {},
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.verified).toBe(false);
+      expect(r.identity?.user_id).toBe("dev");
+    }
+  });
+
   test("require_access 403/401", async () => {
     const denied = require_access(identity, "hr", "departments", "read");
     expect(denied?.status).toBe(403);

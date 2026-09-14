@@ -251,7 +251,12 @@ export function define_kirlet(def: KirletDefinitionInput): KirletDefinition {
         : `kirel/${technical_id}:${version}`);
     const permissions: Array<{ id: string; label: string }> = [];
     const pages: KirletManifest["pages"] = [];
-    const public_pages: Array<{ id: string; access: KirletPublicAccess }> = [];
+    const public_pages: Array<{
+      id: string;
+      access: KirletPublicAccess;
+      segment?: string;
+      label?: string;
+    }> = [];
     const public_api: Array<{
       pathPrefix: string;
       access: KirletPublicAccess;
@@ -307,7 +312,16 @@ export function define_kirlet(def: KirletDefinitionInput): KirletDefinition {
       for (const p of mod.pages ?? []) {
         if (!p.public_access) continue;
         if (!public_pages.some((x) => x.id === p.id)) {
-          public_pages.push({ id: p.id, access: p.public_access });
+          const entry: (typeof public_pages)[number] = {
+            id: p.id,
+            access: p.public_access,
+          };
+          // `segment` vacío es el inicio del escaparate: distinguir "no lo
+          // declaró" de "lo declaró vacío" es justamente lo que evita que el
+          // anfitrión vuelva a adivinar.
+          if (p.public_segment !== undefined) entry.segment = p.public_segment;
+          if (p.public_label) entry.label = p.public_label;
+          public_pages.push(entry);
         }
       }
     }

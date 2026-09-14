@@ -153,6 +153,16 @@ export type KirletPageDecl = {
   /** When set, page is listed under manifest.public.pages. */
   public_access?: KirletPublicAccess;
   /**
+   * Sección de la URL pública y nombre que ve el visitante.
+   *
+   * Sin esto el anfitrión tiene que adivinar la sección a partir del id, y
+   * acaba habiendo dos nombres para la misma página (`catalog` derivado y
+   * `catalogo` en los enlaces que escribe la app). La app ya sabe cómo se
+   * llama su propio escaparate: que lo diga ella.
+   */
+  public_segment?: string;
+  public_label?: string;
+  /**
    * Unique page build signature (HR/tienda divergence resolved).
    * May be async: `serve_kirlet` awaits the result, so synchronous builds
    * written against the previous signature keep working unchanged.

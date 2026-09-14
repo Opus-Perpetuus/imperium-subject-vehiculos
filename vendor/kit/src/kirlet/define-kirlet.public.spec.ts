@@ -109,3 +109,56 @@ describe("define_subject public opt-in", () => {
     expect(def.technical_id).toBe("subject-notes");
   });
 });
+
+describe("una página pública puede nombrar su sección", () => {
+  test("la app decide el segmento y la etiqueta que ve el visitante", () => {
+    const def = define_kirlet({
+      id: "KIRLET-notes",
+      name: "Notas",
+      version: "0.1.0",
+      image: "kirel/kirlet-notes:0.1.0",
+      compat,
+      public: true,
+      modules: [
+        define_module({
+          resource: "notes",
+          labels: { singular: "Nota", plural: "Notas" },
+          routes: define_routes({
+            "GET /notes": async () => ({ data: [] }),
+          }),
+          pages: [
+            {
+              id: "notes-list",
+              path: "/notes",
+              public_access: "anonymous",
+              public_segment: "avisos",
+              public_label: "Avisos",
+              build: () => ({
+                page: { component: "nox.stack", props: { gap: 1 } },
+              }),
+            },
+          ],
+        }),
+      ],
+    });
+    const page = def.manifest().public?.pages?.[0];
+    expect(page?.segment).toBe("avisos");
+    expect(page?.label).toBe("Avisos");
+  });
+
+  test("sin declararlo, el manifiesto no inventa sección", () => {
+    const def = define_kirlet({
+      id: "KIRLET-notes",
+      name: "Notas",
+      version: "0.1.0",
+      image: "kirel/kirlet-notes:0.1.0",
+      compat,
+      public: true,
+      modules: [notes_module({ page_public: "anonymous" })],
+    });
+    const page = def.manifest().public?.pages?.[0];
+    expect(page?.id).toBe("notes-list");
+    expect(page?.segment).toBeUndefined();
+    expect(page?.label).toBeUndefined();
+  });
+});

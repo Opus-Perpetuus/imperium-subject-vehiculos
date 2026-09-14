@@ -68,12 +68,14 @@ export function authenticate_for_surface(
     }
     return { ok: true, kind: "internal", destination: INTERNAL_HOME_PATH };
   }
-  if (kind !== "external") {
-    return { ok: false, message: GENERIC_CREDENTIALS_MESSAGE };
-  }
+  /**
+   * La parte pública no es un sistema aparte: el personal entra ahí con su
+   * misma cuenta. El destino es siempre el sitio público — pasar al sistema
+   * interno lo decide la persona en la pantalla, no el servidor.
+   */
   return {
     ok: true,
-    kind: "external",
+    kind,
     destination: PUBLIC_LOGIN_DESTINATION,
   };
 }

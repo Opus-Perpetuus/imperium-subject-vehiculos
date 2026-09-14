@@ -472,10 +472,35 @@ function parse_public_block(
           });
           return;
         }
-        result.pages!.push({
+        const page: NonNullable<KirletManifestPublic["pages"]>[number] = {
           id,
           access: access as KirletPublicAccess,
-        });
+        };
+        // El segmento acaba en la URL del sitio público: solo minúsculas,
+        // dígitos y guiones. Vacío es legítimo — es el inicio del escaparate.
+        const segment = entry["segment"];
+        if (segment !== undefined) {
+          if (typeof segment !== "string" || !/^[a-z0-9-]*$/.test(segment)) {
+            issues.push({
+              path: `${p}.segment`,
+              message: "segment must be lowercase letters, digits or hyphens",
+            });
+            return;
+          }
+          page.segment = segment;
+        }
+        const label = entry["label"];
+        if (label !== undefined) {
+          if (!is_nonempty_string(label)) {
+            issues.push({
+              path: `${p}.label`,
+              message: "label must be a non-empty string",
+            });
+            return;
+          }
+          page.label = label;
+        }
+        result.pages!.push(page);
       });
     }
   }

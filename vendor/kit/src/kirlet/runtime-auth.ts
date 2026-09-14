@@ -87,26 +87,43 @@ function dev_identity(technical_id: string): KirletIdentity {
  * Resolve identity for a request.
  * Meta paths: optional identity (null ok).
  * Non-meta: requires valid signature unless auth_disabled.
+ *
+ * `verified` says the identity came from a signature, not from the dev
+ * fallback. With `auth_disabled` the app still honours a signed identity when
+ * the gateway sends one: a núcleo that signs gets real users and real grants
+ * without every app having to flip `KIRLET_AUTH` in the same deploy. Only when
+ * nothing is signed does the synthetic admin take over — that is what keeps an
+ * app runnable standalone.
  */
 export function resolve_identity(
   req: Request,
   path: string,
   opts: ResolveIdentityOptions,
 ):
-  | { ok: true; identity: KirletIdentity | null }
+  | { ok: true; identity: KirletIdentity | null; verified: boolean }
   | { ok: false; response: Response } {
   const secret = opts.gateway_secret;
 
   if (is_meta_path(path)) {
     if (!secret) {
-      return { ok: true, identity: null };
+      return { ok: true, identity: null, verified: false };
     }
     const headers = headers_to_record(req);
     const verified = verify_kirlet_identity(headers, secret);
-    return { ok: true, identity: verified.ok ? verified.identity : null };
+    return {
+      ok: true,
+      identity: verified.ok ? verified.identity : null,
+      verified: verified.ok,
+    };
   }
 
   if (opts.auth_disabled) {
+    if (secret) {
+      const signed = verify_kirlet_identity(headers_to_record(req), secret);
+      if (signed.ok) {
+        return { ok: true, identity: signed.identity, verified: true };
+      }
+    }
     if (opts.on_auth_off) {
       opts.on_auth_off();
     } else if (!auth_off_warned) {
@@ -115,7 +132,11 @@ export function resolve_identity(
       );
       auth_off_warned = true;
     }
-    return { ok: true, identity: dev_identity(opts.technical_id) };
+    return {
+      ok: true,
+      identity: dev_identity(opts.technical_id),
+      verified: false,
+    };
   }
 
   if (!secret) {
@@ -136,7 +157,7 @@ export function resolve_identity(
       response: error_response("unauthorized", verified.error, 401),
     };
   }
-  return { ok: true, identity: verified.identity };
+  return { ok: true, identity: verified.identity, verified: true };
 }
 
 /**
