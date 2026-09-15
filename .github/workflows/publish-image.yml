@@ -4,24 +4,59 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  # `contents: write` para poder empujar el commit de release y su tag.
+  contents: write
   packages: write
+# Dos push seguidos no pueden pelearse por el mismo tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   docker:
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip image]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Sin la historia completa no hay tags y cada corrida pareceria el
+          # primer release.
+          fetch-depth: 0
+      - name: Subir version por conventional commits
+        id: release
+        run: |
+          set +e
+          bash scripts/release.sh
+          code=$?
+          set -e
+          if [ "$code" = "78" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "Nada que liberar; no se publica imagen." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          exit "$code"
+      - name: Commit y tag de release
+        if: steps.release.outputs.released == 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          # `[skip image]` cierra el bucle: el `if` del job ignora este push.
+          git commit -m "chore(release): $VERSION [skip image]"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin HEAD:main --follow-tags
       - uses: docker/setup-buildx-action@v3
+        if: steps.release.outputs.released == 'true'
       - uses: docker/login-action@v3
+        if: steps.release.outputs.released == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
+        if: steps.release.outputs.released == 'true'
         run: |
-          VERSION="$(jq -r .version package.json)"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="${{ steps.release.outputs.version }}"
           docker buildx build --build-context kit=./vendor/kit \
             --label org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
             --annotation org.opencontainers.image.source=https://github.com/Opus-Perpetuus/imperium-subject-vehiculos \
@@ -32,12 +67,16 @@ jobs:
             --push \
             .
       - name: Notify n8n
+        if: steps.release.outputs.released == 'true'
         continue-on-error: true
         env:
           HOOK: ${{ secrets.SUBJECT_N8N_WEBHOOK }}
           DEFAULT_HOOK: https://nochon.codice-progressio.online/webhook/imperium-subject
         run: |
           HOOK="${HOOK:-$DEFAULT_HOOK}"
+          VERSION="${{ steps.release.outputs.version }}"
+          # El sha del commit de release, no el que disparo el workflow.
+          SHA="$(git rev-parse HEAD)"
           curl -fsS -X POST "$HOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:$VERSION\",\"tag\":\"$VERSION\",\"sha\":\"${{ github.sha }}\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+            -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:$VERSION\",\"tag\":\"$VERSION\",\"sha\":\"$SHA\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
