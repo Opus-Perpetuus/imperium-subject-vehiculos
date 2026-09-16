@@ -68,7 +68,6 @@ jobs:
             .
       - name: Notify n8n
         if: steps.release.outputs.released == 'true'
-        continue-on-error: true
         env:
           HOOK: ${{ secrets.SUBJECT_N8N_WEBHOOK }}
           DEFAULT_HOOK: https://nochon.codice-progressio.online/webhook/imperium-subject
@@ -76,6 +75,7 @@ jobs:
           HOOK="${HOOK:-$DEFAULT_HOOK}"
           VERSION="${{ steps.release.outputs.version }}"
           # El sha del commit de release, no el que disparo el workflow.
+          # Si el pin no se escribe, el job falla (antes se tragaba el error).
           SHA="$(git rev-parse HEAD)"
           curl -fsS -X POST "$HOOK" \
             -H "Content-Type: application/json" \
