@@ -16,11 +16,17 @@
 #   feat                      → minor
 #   fix | perf                → patch
 #   BREAKING CHANGE | tipo!   → major, salvo en 0.x, donde es minor
-#   solo chore/docs/style/... → nada que liberar
+#   solo chore/docs/style/... → patch (piso: todo push publica imagen)
+#
+# El piso es deliberado y se aparta de `scripts/guard-releasable.sh` del
+# monorepo, que sí salta los chore: allí un patch vacío ensucia el changelog que
+# se publica en Odoo; aquí lo que se publica es una imagen, y una imagen que no
+# cambia de etiqueta no llega al servidor.
 #
 # Códigos de salida:
 #   0  — se subió la versión; escribe la nueva en $GITHUB_OUTPUT si existe
-#   78 — AVISO: no hay nada liberable. No es error: el llamador salta la imagen.
+#   78 — AVISO: no hay commits nuevos desde el tag. No es error: el llamador
+#        salta la imagen (es el caso del propio commit de release).
 #   1  — error real (no es worktree, package.json ilegible, commit no convencional)
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -101,9 +107,13 @@ if [ -z "$bump" ]; then
 	done
 fi
 
+# Piso: si hay commits nuevos, sale versión. Un chore que toca el Dockerfile o
+# el vendor/kit cambia la imagen igual que un fix, y dejar la etiqueta quieta
+# con `pull_policy: if_not_present` deja al servidor con el build viejo sin
+# decir nada — que es justo el problema que este script vino a cerrar.
 if [ -z "$bump" ]; then
-	aviso "solo chore/docs/refactor desde ${ultimo_tag:-el inicio}: nada que liberar"
-	exit "$SKIP"
+	bump="patch"
+	aviso "sin feat/fix/perf desde ${ultimo_tag:-el inicio}: patch por defecto"
 fi
 
 # ── Versión nueva ──────────────────────────────────────────────────────────
