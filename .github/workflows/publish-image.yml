@@ -67,16 +67,25 @@ jobs:
             --push \
             .
       - name: Notify n8n
-        if: steps.release.outputs.released == 'true'
+        if: steps.release.outputs.released == 'true' || github.event_name == 'workflow_dispatch'
         env:
           HOOK: ${{ secrets.SUBJECT_N8N_WEBHOOK }}
           DEFAULT_HOOK: https://nochon.codice-progressio.online/webhook/imperium-subject
+          ORIGIN_IP: ${{ vars.SUBJECT_N8N_ORIGIN_IP || '185.209.229.231' }}
         run: |
           HOOK="${HOOK:-$DEFAULT_HOOK}"
           VERSION="${{ steps.release.outputs.version }}"
+          # Lanzado a mano sin release: re-avisa la version publicada (un aviso perdido).
+          [ -n "$VERSION" ] || VERSION="$(node -p "require('./package.json').version")"
           # El sha del commit de release, no el que disparo el workflow.
           # Si el pin no se escribe, el job falla (antes se tragaba el error).
           SHA="$(git rev-parse HEAD)"
-          curl -fsS -X POST "$HOOK" \
+          # Cloudflare corta a los runners (403): ir al origen, mismo nombre y TLS.
+          HOST="$(printf '%s' "$HOOK" | sed -E 's#^https?://([^/:]+).*#\1#')"
+          RESOLVE=()
+          if [ -n "$ORIGIN_IP" ] && [ "$HOST" = "nochon.codice-progressio.online" ]; then
+            RESOLVE=(--resolve "$HOST:443:$ORIGIN_IP")
+          fi
+          curl -fsS --retry 3 --retry-all-errors --retry-delay 10 "${RESOLVE[@]}" -X POST "$HOOK" \
             -H "Content-Type: application/json" \
             -d "{\"slug\":\"vehiculos\",\"image\":\"ghcr.io/opus-perpetuus/subject-vehiculos:$VERSION\",\"tag\":\"$VERSION\",\"sha\":\"$SHA\",\"run_url\":\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
