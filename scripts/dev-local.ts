@@ -8,8 +8,15 @@
  * instala el schema de esta app y arranca bun --watch.
  *
  * Requiere `yarn dev:modular-stack` (o el núcleo en :3100). Override:
- *   CORE_URL  PORT  CORE_SUBJECT_GATEWAY_SECRET  IMPERIUM_MODULAR_ROOT
+ *   CORE_URL  PORT  CORE_SUBJECT_GATEWAY_SECRET (maestro)  IMPERIUM_MODULAR_ROOT
+ *   SUBJECT_AUTH=off SUBJECT_DEV_ADMIN=1  → admin sintético para curl directo a la app
+ *
+ * dev-attach e install-schemas van siempre con el maestro. La app arranca con el
+ * secreto que el núcleo sabe verificar según su /health: `secret_mode: "strict"`
+ * → su derivado; `compat` o sin `secret_mode` (núcleo 13.46.0 o anterior) → el
+ * maestro, porque ese núcleo firma la identidad con él.
  */
+import { createHmac } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -30,8 +37,13 @@ const CORE = (process.env.CORE_URL ?? "http://127.0.0.1:3100").replace(
   /\/$/,
   "",
 );
-const SECRET =
+const MASTER =
   process.env.CORE_SUBJECT_GATEWAY_SECRET ?? "imperium-subject-dev-secret";
+// Misma fórmula que modular/core/src/imperium/subject-secret.ts.
+const DERIVED = createHmac("sha256", MASTER)
+  .update(`imperium-subject-gateway:v1:subject-${slug}`)
+  .digest("hex");
+const AUTH = process.env.SUBJECT_AUTH ?? "on";
 const CATALOG_ORDER = [
   "almacen",
   "configuraciones-de-vista",
@@ -52,6 +64,8 @@ const CATALOG_ORDER = [
   "turnos",
   "vehiculos",
   "ventas",
+  "tienda",
+  "database-manager",
 ];
 const idx = CATALOG_ORDER.indexOf(slug);
 const PORT = Number(
@@ -77,12 +91,13 @@ function find_compose(): string | null {
   return null;
 }
 
-async function wait_core(ms = 60_000) {
+/** Cuerpo de /health, o null si respondió algo que no es JSON. */
+async function wait_core(ms = 60_000): Promise<{ secret_mode?: unknown } | null> {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     try {
       const res = await fetch(`${CORE}/health`);
-      if (res.ok) return;
+      if (res.ok) return await res.json().catch(() => null);
     } catch {
       /* retry */
     }
@@ -124,20 +139,24 @@ async function compose(
   );
 }
 
-async function attach(url: string | null) {
+/** null = hecho; si no, el motivo. */
+async function attach(url: string | null): Promise<string | null> {
   const res = await fetch(`${CORE}/api/subjects/dev-attach`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-core-subject-gateway-secret": SECRET,
+      "x-core-subject-gateway-secret": MASTER,
     },
     body: JSON.stringify({ slug, url }),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`subject-dev-local: dev-attach ${res.status}: ${text}`);
-    process.exit(1);
-  }
+  if (res.ok) return null;
+  const text = await res.text();
+  // Sin CORE_SUBJECT_DEV_ATTACH=1 el núcleo responde como si la ruta no existiera.
+  const hint =
+    res.status === 404 && text.includes('"not found"')
+      ? " (el núcleo necesita CORE_SUBJECT_DEV_ATTACH=1)"
+      : "";
+  return `dev-attach ${res.status}: ${text}${hint}`;
 }
 
 async function main() {
@@ -147,7 +166,25 @@ async function main() {
   }
 
   console.log(`subject-dev-local: ${slug} → :${PORT}  core ${CORE}`);
-  await wait_core();
+  const health = await wait_core();
+  const mode = health?.secret_mode;
+  let app_secret = MASTER;
+  if (mode === "strict") {
+    app_secret = DERIVED;
+    console.log("subject-dev-local: núcleo en strict → secreto derivado");
+  } else if (health === null) {
+    app_secret = DERIVED;
+    console.warn(
+      `subject-dev-local: ${CORE}/health no devolvió JSON; arranco con el secreto derivado ` +
+        "(si la app da 401/403, el núcleo no está en strict).",
+    );
+  } else {
+    console.log(
+      mode === "compat"
+        ? "subject-dev-local: núcleo en compat → secreto maestro"
+        : "subject-dev-local: el núcleo no anuncia secret_mode (13.46.0 o anterior) → secreto maestro",
+    );
+  }
 
   const compose_yml = find_compose();
   let core_is_docker = false;
@@ -188,13 +225,24 @@ async function main() {
         KIRLET_TECHNICAL_ID: `subject-${slug}`,
         CORE_DATA_URL: CORE,
         NOX_DATA_URL: CORE,
-        CORE_SUBJECT_GATEWAY_SECRET: SECRET,
-        NOX_KIRLET_GATEWAY_SECRET: SECRET,
-        SUBJECT_AUTH: "off",
-        KIRLET_AUTH: "off",
+        CORE_SUBJECT_GATEWAY_SECRET: app_secret,
+        NOX_KIRLET_GATEWAY_SECRET: app_secret,
+        SUBJECT_AUTH: AUTH,
+        KIRLET_AUTH: AUTH,
       },
     },
   );
+
+  // Si no llega a adjuntarse: sin esto la app queda huérfana en el puerto y el
+  // contenedor del stack, parado.
+  const abort = async (msg: string): Promise<never> => {
+    console.error(`subject-dev-local: ${msg}`);
+    child.kill("SIGTERM");
+    if (compose_yml && core_is_docker) {
+      await compose(compose_yml, ["start", `subject-${slug}`]);
+    }
+    process.exit(1);
+  };
 
   const ready_t0 = Date.now();
   let up = false;
@@ -210,27 +258,36 @@ async function main() {
     }
     await Bun.sleep(200);
   }
-  if (!up) {
-    console.error("subject-dev-local: la app no levantó /health");
-    child.kill("SIGTERM");
-    process.exit(1);
-  }
+  if (!up) await abort("la app no levantó /health");
 
-  await attach(public_url);
+  const attached = await attach(public_url).catch((e) => String(e));
+  if (attached) await abort(attached);
   const inst = await fetch(
     `${CORE}/api/subjects/install-schemas/subject-${slug}`,
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "x-core-subject-gateway-secret": MASTER },
+    },
   );
   console.log(
     `subject-dev-local: schema ${inst.status}  adjunto ${public_url}`,
   );
+  // El núcleo responde 200 aunque no aplique el schema; el motivo va por app.
+  const inst_data = (
+    (await inst.json().catch(() => null)) as { data?: unknown } | null
+  )?.data;
+  const own = Array.isArray(inst_data)
+    ? (inst_data as { id?: string; ok?: boolean; error?: string; status?: number }[])
+        .find((r) => r?.id === `subject-${slug}`)
+    : undefined;
+  if (own?.ok === false) {
+    console.warn(
+      `subject-dev-local: AVISO: el núcleo no aplicó el schema: ${own.error ?? `su GET /schema a la app dio ${own.status}`}`,
+    );
+  }
 
   const cleanup = async () => {
-    try {
-      await attach(null);
-    } catch {
-      /* ignore */
-    }
+    await attach(null).catch(() => null);
     if (compose_yml && core_is_docker) {
       await compose(compose_yml, ["start", `subject-${slug}`]);
     }
