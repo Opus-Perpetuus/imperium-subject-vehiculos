@@ -1,6 +1,4 @@
-// (o==================================================================o)
 //   #region PUBLIC API
-// (o-----------------------------------------------------------\/-----o)
 
 /**
  * Full kit surface for Node (API, Imperium apps, tests).
@@ -40,6 +38,7 @@ export * from './kirlet/file-store.js';
 export * from './kirlet/nox-services.js';
 export * from './kirlet/memory-nox-services.js';
 export * from './kirlet/http-nox-services.js';
+export * from './kirlet/subject-client.js';
 export * from './kirlet/define-module.js';
 export * from './kirlet/define-crud.js';
 export * from './kirlet/define-kirlet.js';
@@ -68,6 +67,4 @@ export * from './kirlet/widgets.js';
 export * from './platform/realms.js';
 export * from './tags/types.js';
 
-// (o-----------------------------------------------------------/\-----o)
 //   #endregion PUBLIC API
-// (o==================================================================o)

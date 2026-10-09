@@ -1,6 +1,4 @@
-// (o==================================================================o)
 //   #region NOX SERVICES (capabilities plane for kirlets)
-// (o-----------------------------------------------------------\/-----o)
 
 export type HistoryAppendInput = {
   resource: string;
@@ -74,6 +72,13 @@ export type NoxFileRef = {
    */
   url: string;
   created_at: string;
+  /**
+   * Small JPEG data URL, only for images saved through the v13 core. Lists,
+   * datalist options and prints embed it: the session cookie is SameSite=Lax
+   * and the Android app runs on `https://localhost`, so an `<img>` to `url`
+   * leaves without it; kirlets have no image codec either.
+   */
+  thumbnail?: string;
 };
 
 /**
@@ -124,6 +129,4 @@ export interface NoxServices {
   };
 }
 
-// (o-----------------------------------------------------------/\-----o)
 //   #endregion NOX SERVICES
-// (o==================================================================o)

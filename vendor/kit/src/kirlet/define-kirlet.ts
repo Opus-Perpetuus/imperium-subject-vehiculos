@@ -1,6 +1,4 @@
-// (o==================================================================o)
 //   #region DEFINE KIRLET (single source of truth → manifest)
-// (o-----------------------------------------------------------\/-----o)
 
 import type { KirletManifest, KirletManifestIcon, KirletManifestMenuItem, KirletPublicAccess } from "./manifest.js";
 import { kirlet_slug_from_id, is_kirlet_catalog_id } from "./manifest.js";
@@ -61,6 +59,8 @@ export type KirletDefinitionInput = {
   public_files?: Array<{ resource: string; access?: KirletPublicAccess }>;
   /** Other kirlets that must be installed first (technical ids). */
   dependsOn?: string[];
+  /** Minimum product version this app needs (`X.Y.Z`); the core won't auto-apply it on an older core. */
+  requires?: { core?: string };
   /** Mobile widgets this kirlet contributes when installed. */
   widgets?: KirletManifestWidget[];
 };
@@ -351,6 +351,9 @@ export function define_kirlet(def: KirletDefinitionInput): KirletDefinition {
     if (def.dependsOn?.length) {
       raw.dependsOn = [...def.dependsOn];
     }
+    if (def.requires?.core) {
+      raw.requires = { core: def.requires.core };
+    }
     if (def.widgets?.length) {
       raw.widgets = def.widgets.map((w) => ({ ...w }));
       const local_widgets = raw.widgets.filter((w) => w.capability !== "backend-only");
@@ -423,6 +426,4 @@ export function qualify_history_resource(
 // silence unused DomainRow in case of future seed typing
 export type { DomainRow };
 
-// (o-----------------------------------------------------------/\-----o)
 //   #endregion DEFINE KIRLET
-// (o==================================================================o)

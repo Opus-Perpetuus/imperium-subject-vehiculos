@@ -1,6 +1,4 @@
-// (o==================================================================o)
 //   #region KIRLET MANIFEST
-// (o-----------------------------------------------------------\/-----o)
 
 import type { KirletManifestWidget } from "./widgets.js";
 
@@ -122,6 +120,8 @@ export interface KirletManifest {
   public?: KirletManifestPublic;
   /** Other kirlets that must be installed first (technical ids). */
   dependsOn?: string[];
+  /** Minimum product (core) version, `X.Y.Z`. */
+  requires?: { core?: string };
   /**
    * Widgets this kirlet offers the mobile host (in-app + launcher).
    * Absent ⇒ no kirlet widgets (NOX defaults still apply).
@@ -168,6 +168,4 @@ export function kirlet_slug_from_id(id: string): string | null {
 
 export const subject_slug_from_id = kirlet_slug_from_id;
 
-// (o-----------------------------------------------------------/\-----o)
 //   #endregion KIRLET MANIFEST
-// (o==================================================================o)
