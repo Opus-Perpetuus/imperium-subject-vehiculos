@@ -12,6 +12,7 @@ async function sincronizar_odometro(
   },
   vehicle_id: string,
   tipo: string,
+  evento: Parameters<typeof odometro_tras_lecturas>[0]["evento"],
 ) {
   if (tipo !== "km" && tipo !== "horas") return;
   const lecturas = await ctx.data.findMany("lectura_uso", {
@@ -25,6 +26,7 @@ async function sincronizar_odometro(
     hoy: today_iso(),
     actual: numero(vehicle[field]),
     lecturas,
+    evento,
   });
   if (valor == null || valor === numero(vehicle[field])) return;
   await ctx.data.update("vehicle", { id: vehicle_id }, {
@@ -99,19 +101,29 @@ export const lectura_uso_module = definir_recurso({
       return patch;
     },
     async after_create(ctx, row) {
-      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo));
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo), { accion: "alta" });
     },
     async after_update(ctx, row, before) {
-      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo ?? before.tipo));
+      const evento = { accion: "edicion" as const, valor_anterior: numero(before.valor) };
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo ?? before.tipo), evento);
       if (before.vehicle_id && before.vehicle_id !== row.vehicle_id) {
-        await sincronizar_odometro(ctx, String(before.vehicle_id), String(before.tipo ?? row.tipo));
+        await sincronizar_odometro(ctx, String(before.vehicle_id), String(before.tipo ?? row.tipo), {
+          accion: "baja",
+          valor_anterior: numero(before.valor),
+        });
       }
       if (before.tipo && before.tipo !== row.tipo) {
-        await sincronizar_odometro(ctx, String(before.vehicle_id ?? row.vehicle_id), String(before.tipo));
+        await sincronizar_odometro(ctx, String(before.vehicle_id ?? row.vehicle_id), String(before.tipo), {
+          accion: "baja",
+          valor_anterior: numero(before.valor),
+        });
       }
     },
     async after_delete(ctx, row) {
-      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo));
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo), {
+        accion: "baja",
+        valor_anterior: numero(row.valor),
+      });
     },
   },
 });

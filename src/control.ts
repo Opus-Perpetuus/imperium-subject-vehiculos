@@ -251,9 +251,10 @@ export function cumplir_servicio(
       ultima_lectura: lectura,
     };
   }
+  const previa = fecha_iso(vista.proxima_fecha ?? null);
   return {
     estado: "programado",
-    proxima_fecha: recurrente_fecha ? sumar_dias(fecha, intervalo_dias) : fecha_iso(vista.proxima_fecha ?? null),
+    proxima_fecha: recurrente_fecha ? sumar_dias(fecha, intervalo_dias) : previa && previa > fecha ? previa : null,
     proxima_lectura: recurrente_lectura ? lectura! + intervalo_lectura : null,
     ultima_fecha: fecha,
     ultima_lectura: lectura,
@@ -282,7 +283,18 @@ export function lectura_que_manda(
   return best ? { fecha: best.fecha, valor: best.valor } : null;
 }
 
-/** La que manda es la de fecha más nueva. Una anterior no pisa el odómetro que ya está cargado. */
+export type EventoOdometro =
+  | { accion: "alta" }
+  | { accion: "edicion"; valor_anterior: number | null }
+  | { accion: "baja"; valor_anterior: number | null };
+
+/**
+ * Alta: la de fecha más nueva manda si no hay odómetro, si es de hoy o
+ * posterior, o si sube la lectura. Una fecha anterior no baja un odómetro
+ * que esa lectura no era.
+ * Edición o baja de la lectura que estaba en el odómetro: se recomputa la
+ * de mayor fecha, aunque el valor baje.
+ */
 export function odometro_tras_lecturas(input: {
   hoy: string;
   actual: number | null;
@@ -292,17 +304,17 @@ export function odometro_tras_lecturas(input: {
     updated_at?: unknown;
     is_active?: unknown;
   }>;
+  evento: EventoOdometro;
 }): number | null {
   const manda = lectura_que_manda(input.lecturas);
   if (!manda) return input.actual;
   const hoy = fecha_iso(input.hoy) ?? input.hoy.slice(0, 10);
-  if (manda.fecha >= hoy || input.actual == null) return manda.valor;
-  const actual_es_mas_vieja = input.lecturas.some((row) => {
-    if (row.is_active === false) return false;
-    const fecha = fecha_iso(row.fecha);
-    return fecha != null && fecha < manda.fecha && numero(row.valor) === input.actual;
-  });
-  return actual_es_mas_vieja ? manda.valor : input.actual;
+  if (input.evento.accion === "edicion" || input.evento.accion === "baja") {
+    if (input.actual == null || input.actual === input.evento.valor_anterior) return manda.valor;
+    return input.actual;
+  }
+  if (input.actual == null || manda.fecha >= hoy || manda.valor > input.actual) return manda.valor;
+  return input.actual;
 }
 
 type Fila = Record<string, unknown>;

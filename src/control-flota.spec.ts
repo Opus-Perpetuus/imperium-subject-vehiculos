@@ -89,13 +89,14 @@ describe("cálculo de flota", () => {
     expect(rodado_km.estado).toBe("programado");
   });
 
-  test("una lectura anterior no pisa el odómetro de una fecha más nueva", () => {
+  test("una lectura anterior no pisa el odómetro; editar o borrar la que manda sí recomputa", () => {
     const hoy = "2026-10-16";
     expect(
       odometro_tras_lecturas({
         hoy,
         actual: 10000,
         lecturas: [{ fecha: "2020-01-01", valor: 100, is_active: true }],
+        evento: { accion: "alta" },
       }),
     ).toBe(10000);
     expect(
@@ -103,11 +104,45 @@ describe("cálculo de flota", () => {
         hoy,
         actual: 10000,
         lecturas: [
-          { fecha: hoy, valor: 10000, is_active: true, updated_at: "2026-10-16T00:00:00Z" },
-          { fecha: "2020-01-01", valor: 100, is_active: true, updated_at: "2026-10-16T01:00:00Z" },
+          { fecha: "2020-01-01", valor: 10000, is_active: true },
+          { fecha: "2024-01-01", valor: 100, is_active: true },
         ],
+        evento: { accion: "alta" },
       }),
     ).toBe(10000);
+    expect(
+      odometro_tras_lecturas({
+        hoy,
+        actual: 5000,
+        lecturas: [{ fecha: "2024-01-01", valor: 6000, is_active: true }],
+        evento: { accion: "edicion", valor_anterior: 5000 },
+      }),
+    ).toBe(6000);
+    expect(
+      odometro_tras_lecturas({
+        hoy,
+        actual: 8000,
+        lecturas: [
+          { fecha: "2024-01-01", valor: 5000, is_active: true },
+          { fecha: "2025-01-01", valor: 8000, is_active: false },
+        ],
+        evento: { accion: "baja", valor_anterior: 8000 },
+      }),
+    ).toBe(5000);
+    const cumplido = cumplir_servicio(
+      {
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        intervalo_lectura: 5000,
+        intervalo_dias: 0,
+        proxima_fecha: "2026-10-01",
+        estado: "programado",
+      },
+      { fecha: hoy, lectura: 10000 },
+    );
+    expect(cumplido.proxima_lectura).toBe(15000);
+    expect(cumplido.proxima_fecha).toBeNull();
+    expect(clasificar_servicio(cumplido, { hoy, lectura_km: 10000 }).estado).not.toBe("vencido");
   });
 });
 
@@ -440,6 +475,86 @@ describe("subject de vehículos", () => {
       await api(server, "PATCH", `/lectura-uso/${reciente.json.data.id}`, { valor: 13000 });
       const corregida = await api(server, "GET", `/vehicle/${vehicle_id}`);
       expect(corregida.json.data.lectura_km).toBe(13000);
+
+      const pasado = await api(server, "POST", "/servicio-programado", {
+        name: "Aceite con fecha vencida",
+        vehicle_id,
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        intervalo_lectura: 5000,
+        intervalo_dias: 0,
+        proxima_fecha: sumar_dias(hoy, -15),
+        aviso_dias: 7,
+      });
+      await api(server, "PATCH", `/vehicle/${vehicle_id}`, { lectura_km: 10000 });
+      const cumplido_fecha = await api(server, "POST", `/servicio-programado/${pasado.json.data.id}/cumplir`, {});
+      expect(cumplido_fecha.json.data.proxima_lectura).toBe(15000);
+      expect(cumplido_fecha.json.data.proxima_fecha).toBeNull();
+      const sin_fecha = await api(server, "GET", "/servicio-programado/recordatorios");
+      expect(sin_fecha.json.vencidos.map((aviso: { id: string }) => aviso.id)).not.toContain(pasado.json.data.id);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("la lectura anterior a hoy se edita, avanza y al borrar la nueva queda la anterior", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const vehicle = await api(server, "POST", "/vehicle", { name: "Sin km", placas: "SN-01" });
+      const vehicle_id = vehicle.json.data.id as string;
+      const primera = await api(server, "POST", "/lectura-uso", {
+        name: "2024",
+        vehicle_id,
+        tipo: "km",
+        valor: 5000,
+        fecha: "2024-01-01",
+      });
+      expect((await api(server, "GET", `/vehicle/${vehicle_id}`)).json.data.lectura_km).toBe(5000);
+      await api(server, "PATCH", `/lectura-uso/${primera.json.data.id}`, { valor: 6000 });
+      expect((await api(server, "GET", `/vehicle/${vehicle_id}`)).json.data.lectura_km).toBe(6000);
+      const segunda = await api(server, "POST", "/lectura-uso", {
+        name: "2025",
+        vehicle_id,
+        tipo: "km",
+        valor: 9000,
+        fecha: "2025-01-01",
+      });
+      expect((await api(server, "GET", `/vehicle/${vehicle_id}`)).json.data.lectura_km).toBe(9000);
+      await api(server, "DELETE", `/lectura-uso/${segunda.json.data.id}`);
+      expect((await api(server, "GET", `/vehicle/${vehicle_id}`)).json.data.lectura_km).toBe(6000);
+
+      const cargado = await api(server, "POST", "/vehicle", {
+        name: "Con km",
+        placas: "CN-02",
+        lectura_km: 10000,
+      });
+      const cargado_id = cargado.json.data.id as string;
+      await api(server, "POST", "/lectura-uso", {
+        name: "2020 igual",
+        vehicle_id: cargado_id,
+        tipo: "km",
+        valor: 10000,
+        fecha: "2020-01-01",
+      });
+      await api(server, "POST", "/lectura-uso", {
+        name: "2024 baja",
+        vehicle_id: cargado_id,
+        tipo: "km",
+        valor: 100,
+        fecha: "2024-01-01",
+      });
+      expect((await api(server, "GET", `/vehicle/${cargado_id}`)).json.data.lectura_km).toBe(10000);
+      const hoy = today_iso();
+      const servicio = await api(server, "POST", "/servicio-programado", {
+        name: "Sigue vencido",
+        vehicle_id: cargado_id,
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        proxima_fecha: sumar_dias(hoy, 40),
+        aviso_dias: 7,
+      });
+      const avisos = await api(server, "GET", "/servicio-programado/recordatorios");
+      expect(avisos.json.vencidos.map((aviso: { id: string }) => aviso.id)).toContain(servicio.json.data.id);
     } finally {
       server.stop();
     }
