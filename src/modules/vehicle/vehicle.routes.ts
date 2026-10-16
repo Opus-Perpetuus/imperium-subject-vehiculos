@@ -1,16 +1,8 @@
-import { define_crud, define_module } from "@opus-perpetuus/imperium-core-kit";
+import { define_crud, define_module, define_routes } from "@opus-perpetuus/imperium-core-kit";
 import { vehicle_pages } from "./vehicle.pages.ts";
 import { vehicle_tables } from "./vehicle.tables.ts";
 
-export const vehicle_module = define_module({
-  resource: "vehicle",
-  labels: {
-    singular: "Vehículos",
-    plural: "Vehículos",
-    read: "Ver Vehículos",
-    write: "Editar Vehículos",
-  },
-  routes: define_crud({
+const vehicle_crud = define_crud({
     resource: "vehicle",
     table: "vehicle",
     soft_delete: true,
@@ -40,9 +32,44 @@ export const vehicle_module = define_module({
       estado_operativo: { type: "string", search: true },
       chofer: { type: "string", search: true },
       chofer_nombre: { type: "string", search: true },
+      serie: { type: "string", search: true },
+      lectura_km: { type: "number" },
+      lectura_horas: { type: "number" },
     },
     options_map: { value: "id", label: "name" },
-  }),
+  });
+
+export const vehicle_module = define_module({
+  resource: "vehicle",
+  labels: {
+    singular: "Vehículo",
+    plural: "Vehículos",
+    read: "Ver Vehículos",
+    write: "Editar Vehículos",
+  },
+  routes: [
+    ...define_routes({
+      "GET /vehicle/:id/historial": async (ctx) => {
+        const vehicle = await ctx.data.findOne("vehicle", { id: ctx.params.id });
+        if (!vehicle || vehicle.is_active === false) return ctx.not_found();
+        const where = { vehicle_id: ctx.params.id };
+        const [bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos] =
+          await Promise.all([
+            ctx.data.findMany("bitacora", { where }),
+            ctx.data.findMany("falla", { where }),
+            ctx.data.findMany("mantenimiento_correctivo", { where }),
+            ctx.data.findMany("mantenimiento_preventivo", { where }),
+            ctx.data.findMany("servicio_programado", { where }),
+            ctx.data.findMany("lectura_uso", { where }),
+            ctx.data.findMany("documento_vehiculo", { where }),
+          ]);
+        return {
+          data: { vehicle, bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos },
+        };
+      },
+    }),
+    ...vehicle_crud,
+  ],
   tables: vehicle_tables,
   pages: vehicle_pages,
   menu: [

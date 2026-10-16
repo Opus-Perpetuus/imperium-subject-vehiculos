@@ -21,6 +21,70 @@
     {
       "id": "subject.vehiculos.vehicle.write",
       "label": "Editar Vehículos"
+    },
+    {
+      "id": "subject.vehiculos.plantilla-revision.read",
+      "label": "Ver Plantillas de revisión"
+    },
+    {
+      "id": "subject.vehiculos.plantilla-revision.write",
+      "label": "Editar Plantillas de revisión"
+    },
+    {
+      "id": "subject.vehiculos.bitacora.read",
+      "label": "Ver Bitácoras de revisión"
+    },
+    {
+      "id": "subject.vehiculos.bitacora.write",
+      "label": "Editar Bitácoras de revisión"
+    },
+    {
+      "id": "subject.vehiculos.falla.read",
+      "label": "Ver Reportes de falla"
+    },
+    {
+      "id": "subject.vehiculos.falla.write",
+      "label": "Editar Reportes de falla"
+    },
+    {
+      "id": "subject.vehiculos.mantenimiento-correctivo.read",
+      "label": "Ver Mantenimientos correctivos"
+    },
+    {
+      "id": "subject.vehiculos.mantenimiento-correctivo.write",
+      "label": "Editar Mantenimientos correctivos"
+    },
+    {
+      "id": "subject.vehiculos.mantenimiento-preventivo.read",
+      "label": "Ver Mantenimientos preventivos"
+    },
+    {
+      "id": "subject.vehiculos.mantenimiento-preventivo.write",
+      "label": "Editar Mantenimientos preventivos"
+    },
+    {
+      "id": "subject.vehiculos.servicio-programado.read",
+      "label": "Ver Servicios programados"
+    },
+    {
+      "id": "subject.vehiculos.servicio-programado.write",
+      "label": "Editar Servicios programados"
+    },
+    {
+      "id": "subject.vehiculos.lectura-uso.read",
+      "label": "Ver Lecturas de uso"
+    },
+    {
+      "id": "subject.vehiculos.lectura-uso.write",
+      "label": "Editar Lecturas de uso"
+    },
+    {
+      "id": "subject.vehiculos.documento-vehiculo.read",
+      "label": "Ver Documentos del vehículo"
+    },
+    {
+      "id": "subject.vehiculos.documento-vehiculo.write",
+      "label": "Editar Documentos del vehículo"
     }
   ],
   "menu": [
@@ -37,6 +101,87 @@
           "path": "vehicle",
           "permission": "subject.vehiculos.vehicle.read",
           "icon": "document"
+        },
+        {
+          "id": "vehiculos.plantilla-revision",
+          "label": "Plantillas de revisión",
+          "pageId": "vehiculos.plantilla-revision",
+          "order": 20,
+          "path": "plantilla-revision",
+          "permission": "subject.vehiculos.plantilla-revision.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.bitacora",
+          "label": "Bitácoras de revisión",
+          "pageId": "vehiculos.bitacora",
+          "order": 30,
+          "path": "bitacora",
+          "permission": "subject.vehiculos.bitacora.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.falla",
+          "label": "Reportes de falla",
+          "pageId": "vehiculos.falla",
+          "order": 40,
+          "path": "falla",
+          "permission": "subject.vehiculos.falla.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.mantenimiento-correctivo",
+          "label": "Mantenimientos correctivos",
+          "pageId": "vehiculos.mantenimiento-correctivo",
+          "order": 50,
+          "path": "mantenimiento-correctivo",
+          "permission": "subject.vehiculos.mantenimiento-correctivo.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.mantenimiento-preventivo",
+          "label": "Mantenimientos preventivos",
+          "pageId": "vehiculos.mantenimiento-preventivo",
+          "order": 60,
+          "path": "mantenimiento-preventivo",
+          "permission": "subject.vehiculos.mantenimiento-preventivo.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.servicio-programado",
+          "label": "Servicios programados",
+          "pageId": "vehiculos.servicio-programado",
+          "order": 70,
+          "path": "servicio-programado",
+          "permission": "subject.vehiculos.servicio-programado.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.recordatorios",
+          "label": "Recordatorios",
+          "pageId": "vehiculos.recordatorios",
+          "order": 75,
+          "path": "recordatorios",
+          "permission": "subject.vehiculos.servicio-programado.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.lectura-uso",
+          "label": "Lecturas de uso",
+          "pageId": "vehiculos.lectura-uso",
+          "order": 90,
+          "path": "lectura-uso",
+          "permission": "subject.vehiculos.lectura-uso.read",
+          "icon": "document"
+        },
+        {
+          "id": "vehiculos.documento-vehiculo",
+          "label": "Documentos del vehículo",
+          "pageId": "vehiculos.documento-vehiculo",
+          "order": 100,
+          "path": "documento-vehiculo",
+          "permission": "subject.vehiculos.documento-vehiculo.read",
+          "icon": "document"
         }
       ]
     }
@@ -46,6 +191,51 @@
       "id": "vehiculos.vehicle",
       "path": "vehicle",
       "permission": "subject.vehiculos.vehicle.read"
+    },
+    {
+      "id": "vehiculos.plantilla-revision",
+      "path": "plantilla-revision",
+      "permission": "subject.vehiculos.plantilla-revision.read"
+    },
+    {
+      "id": "vehiculos.bitacora",
+      "path": "bitacora",
+      "permission": "subject.vehiculos.bitacora.read"
+    },
+    {
+      "id": "vehiculos.falla",
+      "path": "falla",
+      "permission": "subject.vehiculos.falla.read"
+    },
+    {
+      "id": "vehiculos.mantenimiento-correctivo",
+      "path": "mantenimiento-correctivo",
+      "permission": "subject.vehiculos.mantenimiento-correctivo.read"
+    },
+    {
+      "id": "vehiculos.mantenimiento-preventivo",
+      "path": "mantenimiento-preventivo",
+      "permission": "subject.vehiculos.mantenimiento-preventivo.read"
+    },
+    {
+      "id": "vehiculos.servicio-programado",
+      "path": "servicio-programado",
+      "permission": "subject.vehiculos.servicio-programado.read"
+    },
+    {
+      "id": "vehiculos.recordatorios",
+      "path": "recordatorios",
+      "permission": "subject.vehiculos.servicio-programado.read"
+    },
+    {
+      "id": "vehiculos.lectura-uso",
+      "path": "lectura-uso",
+      "permission": "subject.vehiculos.lectura-uso.read"
+    },
+    {
+      "id": "vehiculos.documento-vehiculo",
+      "path": "documento-vehiculo",
+      "permission": "subject.vehiculos.documento-vehiculo.read"
     }
   ],
   "storage": {
@@ -53,6 +243,14 @@
     "files": false
   },
   "resources": {
-    "vehicle": "vehicle"
+    "vehicle": "vehicle",
+    "plantilla-revision": "plantilla-revision",
+    "bitacora": "bitacora",
+    "falla": "falla",
+    "mantenimiento-correctivo": "mantenimiento-correctivo",
+    "mantenimiento-preventivo": "mantenimiento-preventivo",
+    "servicio-programado": "servicio-programado",
+    "lectura-uso": "lectura-uso",
+    "documento-vehiculo": "documento-vehiculo"
   }
 }

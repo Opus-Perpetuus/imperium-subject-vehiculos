@@ -28,6 +28,9 @@ export const vehicle_tables: KirletTableDecl[] = [
       { name: "estado_operativo", type: "text" },
       { name: "chofer", type: "text" },
       { name: "chofer_nombre", type: "text" },
+      { name: "serie", type: "text" },
+      { name: "lectura_km", type: "real" },
+      { name: "lectura_horas", type: "real" },
     ],
     indexes: [
       { name: "idx_vehicle_name", columns: ["name"] },
