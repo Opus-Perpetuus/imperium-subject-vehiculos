@@ -10,6 +10,7 @@ import {
   clasificar_servicio,
   cumplir_servicio,
   firma_es_trazo,
+  odometro_tras_lecturas,
   sumar_dias,
 } from "./control.ts";
 import { SUBJECT } from "./subject.ts";
@@ -80,6 +81,33 @@ describe("cálculo de flota", () => {
     });
     expect(lista.vencidos.map((aviso) => aviso.id)).toEqual(["s1"]);
     expect(lista.por_vencer.map((aviso) => aviso.id)).toEqual([]);
+    const rodado_km = cumplir_servicio(
+      { tipo_lectura: "km", proxima_lectura: 9000, intervalo_lectura: 5000, estado: "programado" },
+      { fecha: hoy, lectura: 10000 },
+    );
+    expect(rodado_km.proxima_lectura).toBe(15000);
+    expect(rodado_km.estado).toBe("programado");
+  });
+
+  test("una lectura anterior no pisa el odómetro de una fecha más nueva", () => {
+    const hoy = "2026-10-16";
+    expect(
+      odometro_tras_lecturas({
+        hoy,
+        actual: 10000,
+        lecturas: [{ fecha: "2020-01-01", valor: 100, is_active: true }],
+      }),
+    ).toBe(10000);
+    expect(
+      odometro_tras_lecturas({
+        hoy,
+        actual: 10000,
+        lecturas: [
+          { fecha: hoy, valor: 10000, is_active: true, updated_at: "2026-10-16T00:00:00Z" },
+          { fecha: "2020-01-01", valor: 100, is_active: true, updated_at: "2026-10-16T01:00:00Z" },
+        ],
+      }),
+    ).toBe(10000);
   });
 });
 
@@ -327,6 +355,91 @@ describe("subject de vehículos", () => {
       for (const resource of ["bitacora", "falla", "mantenimiento-correctivo", "mantenimiento-preventivo", "servicio-programado"]) {
         expect(manifiesto.json.resources[resource]).toBe(resource);
       }
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("cumplir por uso sin lectura corre la meta, y una fecha anterior no pisa el odómetro", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const hoy = today_iso();
+      const vehicle = await api(server, "POST", "/vehicle", {
+        name: "Unidad 7",
+        placas: "ZZ-07",
+        lectura_km: 10000,
+      });
+      const vehicle_id = vehicle.json.data.id as string;
+      const servicio = await api(server, "POST", "/servicio-programado", {
+        name: "Aceite",
+        vehicle_id,
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        intervalo_lectura: 5000,
+        proxima_fecha: sumar_dias(hoy, 40),
+        aviso_dias: 7,
+      });
+      const vencido = await api(server, "GET", "/servicio-programado/recordatorios");
+      expect(vencido.json.vencidos.map((aviso: { id: string }) => aviso.id)).toContain(servicio.json.data.id);
+
+      const cumplido = await api(server, "POST", `/servicio-programado/${servicio.json.data.id}/cumplir`, {});
+      expect(cumplido.status).toBe(200);
+      expect(cumplido.json.data.estado).toBe("programado");
+      expect(cumplido.json.data.proxima_lectura).toBe(15000);
+      const ya_no = await api(server, "GET", "/servicio-programado/recordatorios");
+      expect(ya_no.json.vencidos.map((aviso: { id: string }) => aviso.id)).not.toContain(servicio.json.data.id);
+
+      const otro = await api(server, "POST", "/servicio-programado", {
+        name: "Filtro",
+        vehicle_id,
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        intervalo_lectura: 5000,
+        proxima_fecha: sumar_dias(hoy, 40),
+        aviso_dias: 7,
+      });
+      const parchado = await api(server, "PATCH", `/servicio-programado/${otro.json.data.id}`, {
+        estado: "cumplido",
+      });
+      expect(parchado.json.data.proxima_lectura).toBe(15000);
+
+      const vieja = await api(server, "POST", "/lectura-uso", {
+        name: "Archivo",
+        vehicle_id,
+        tipo: "km",
+        valor: 100,
+        fecha: "2020-01-01",
+      });
+      expect(vieja.status).toBe(201);
+      const unidad = await api(server, "GET", `/vehicle/${vehicle_id}`);
+      expect(unidad.json.data.lectura_km).toBe(10000);
+      const sigue = await api(server, "POST", "/servicio-programado", {
+        name: "Sigue por km",
+        vehicle_id,
+        tipo_lectura: "km",
+        proxima_lectura: 9000,
+        proxima_fecha: sumar_dias(hoy, 40),
+        aviso_dias: 7,
+      });
+      const avisos = await api(server, "GET", "/servicio-programado/recordatorios");
+      expect(avisos.json.vencidos.map((aviso: { id: string }) => aviso.id)).toContain(sigue.json.data.id);
+
+      await api(server, "PATCH", `/lectura-uso/${vieja.json.data.id}`, { valor: 50 });
+      const tras_editar = await api(server, "GET", `/vehicle/${vehicle_id}`);
+      expect(tras_editar.json.data.lectura_km).toBe(10000);
+
+      const reciente = await api(server, "POST", "/lectura-uso", {
+        name: "Hoy",
+        vehicle_id,
+        tipo: "km",
+        valor: 12000,
+        fecha: hoy,
+      });
+      const subida = await api(server, "GET", `/vehicle/${vehicle_id}`);
+      expect(subida.json.data.lectura_km).toBe(12000);
+      await api(server, "PATCH", `/lectura-uso/${reciente.json.data.id}`, { valor: 13000 });
+      const corregida = await api(server, "GET", `/vehicle/${vehicle_id}`);
+      expect(corregida.json.data.lectura_km).toBe(13000);
     } finally {
       server.stop();
     }

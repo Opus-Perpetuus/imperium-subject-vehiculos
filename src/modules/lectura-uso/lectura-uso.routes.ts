@@ -1,6 +1,37 @@
-import { KirletHttpError, now_iso } from "@opus-perpetuus/imperium-core-kit";
-import { numero } from "../../control.ts";
+import { KirletHttpError, now_iso, today_iso, type DomainRow } from "@opus-perpetuus/imperium-core-kit";
+import { fecha_iso, numero, odometro_tras_lecturas } from "../../control.ts";
 import { VEHICULO, definir_recurso } from "../../recurso.ts";
+
+async function sincronizar_odometro(
+  ctx: {
+    data: {
+      findMany: (table: string, opts: { where: { vehicle_id: string; tipo: string }; limit: number }) => Promise<DomainRow[]>;
+      findOne: (table: string, where: { id: string }) => Promise<DomainRow | null>;
+      update: (table: string, where: { id: string }, patch: DomainRow) => Promise<DomainRow | null>;
+    };
+  },
+  vehicle_id: string,
+  tipo: string,
+) {
+  if (tipo !== "km" && tipo !== "horas") return;
+  const lecturas = await ctx.data.findMany("lectura_uso", {
+    where: { vehicle_id, tipo },
+    limit: 500,
+  });
+  const vehicle = await ctx.data.findOne("vehicle", { id: vehicle_id });
+  if (!vehicle) return;
+  const field = tipo === "horas" ? "lectura_horas" : "lectura_km";
+  const valor = odometro_tras_lecturas({
+    hoy: today_iso(),
+    actual: numero(vehicle[field]),
+    lecturas,
+  });
+  if (valor == null || valor === numero(vehicle[field])) return;
+  await ctx.data.update("vehicle", { id: vehicle_id }, {
+    [field]: valor,
+    updated_at: now_iso(),
+  });
+}
 
 export const lectura_uso_module = definir_recurso({
   resource: "lectura-uso",
@@ -55,12 +86,32 @@ export const lectura_uso_module = definir_recurso({
       if (!row.fecha) row.fecha = new Date().toISOString().slice(0, 10);
       return row;
     },
+    before_update(_ctx, _id, patch) {
+      if ("tipo" in patch && patch.tipo !== "km" && patch.tipo !== "horas") {
+        throw new KirletHttpError(400, "validation_error", "la lectura es km u horas");
+      }
+      if ("valor" in patch && numero(patch.valor) == null) {
+        throw new KirletHttpError(400, "validation_error", "la lectura necesita un valor");
+      }
+      if ("fecha" in patch && patch.fecha != null && !fecha_iso(patch.fecha)) {
+        throw new KirletHttpError(400, "validation_error", "la lectura necesita una fecha");
+      }
+      return patch;
+    },
     async after_create(ctx, row) {
-      const field = row.tipo === "horas" ? "lectura_horas" : "lectura_km";
-      await ctx.data.update("vehicle", { id: String(row.vehicle_id) }, {
-        [field]: row.valor,
-        updated_at: now_iso(),
-      });
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo));
+    },
+    async after_update(ctx, row, before) {
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo ?? before.tipo));
+      if (before.vehicle_id && before.vehicle_id !== row.vehicle_id) {
+        await sincronizar_odometro(ctx, String(before.vehicle_id), String(before.tipo ?? row.tipo));
+      }
+      if (before.tipo && before.tipo !== row.tipo) {
+        await sincronizar_odometro(ctx, String(before.vehicle_id ?? row.vehicle_id), String(before.tipo));
+      }
+    },
+    async after_delete(ctx, row) {
+      await sincronizar_odometro(ctx, String(row.vehicle_id), String(row.tipo));
     },
   },
 });

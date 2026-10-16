@@ -15,11 +15,29 @@ import {
 } from "../../control.ts";
 import { API, VEHICULO, definir_recurso, define_routes, pagina_lista } from "../../recurso.ts";
 
-function cumplir_fila(row: DomainRow, body: Record<string, unknown>): DomainRow {
+async function lectura_para_cumplir(
+  ctx: { data: { findOne: (table: string, where: { id: string }) => Promise<DomainRow | null> } },
+  row: DomainRow,
+  body: Record<string, unknown>,
+): Promise<number | null> {
+  const explicita = numero(body.lectura ?? body.ultima_lectura);
+  if (explicita != null) return explicita;
+  const tipo = row.tipo_lectura === "horas" ? "horas" : row.tipo_lectura === "km" ? "km" : null;
+  if (!tipo) return null;
+  const vehicle = await ctx.data.findOne("vehicle", { id: String(row.vehicle_id ?? "") });
+  if (!vehicle) return null;
+  return numero(tipo === "horas" ? vehicle.lectura_horas : vehicle.lectura_km);
+}
+
+async function cumplir_fila(
+  ctx: { data: { findOne: (table: string, where: { id: string }) => Promise<DomainRow | null> } },
+  row: DomainRow,
+  body: Record<string, unknown>,
+): Promise<DomainRow> {
   const fecha = fecha_iso(body.fecha) ?? fecha_iso(body.ultima_fecha) ?? today_iso();
   const next = cumplir_servicio(servicio_vista(row), {
     fecha,
-    lectura: numero(body.lectura ?? body.ultima_lectura),
+    lectura: await lectura_para_cumplir(ctx, row, body),
   });
   return {
     ...next,
@@ -164,7 +182,7 @@ export const servicio_programado_module = definir_recurso({
       const body = (await ctx.body<Record<string, unknown>>()) ?? {};
       let next: DomainRow;
       try {
-        next = cumplir_fila(existing, body);
+        next = await cumplir_fila(ctx, existing, body);
       } catch (error) {
         const message = error instanceof Error ? error.message : "no se pudo cumplir el servicio";
         throw new KirletHttpError(400, "validation_error", message);
@@ -177,7 +195,7 @@ export const servicio_programado_module = definir_recurso({
     },
   }),
   hooks: {
-    before_create(_ctx, row) {
+    async before_create(ctx, row) {
       if (row.aviso_dias == null) row.aviso_dias = 7;
       if (row.aviso_lectura == null) row.aviso_lectura = 0;
       if (!row.estado) row.estado = "programado";
@@ -185,18 +203,18 @@ export const servicio_programado_module = definir_recurso({
       const error = validar_servicio(servicio_vista(row));
       if (error) throw new KirletHttpError(400, "validation_error", error);
       if (pide_cumplir(row.estado)) {
-        return { ...row, ...cumplir_fila(row, { fecha: today_iso() }) };
+        return { ...row, ...(await cumplir_fila(ctx, row, { fecha: today_iso() })) };
       }
       return row;
     },
-    before_update(_ctx, _id, patch, existing) {
+    async before_update(ctx, _id, patch, existing) {
       if (!pide_cumplir(patch.estado) || existing.estado === "cumplido") {
         const error = validar_servicio(servicio_vista({ ...existing, ...patch }));
         if (error) throw new KirletHttpError(400, "validation_error", error);
         return patch;
       }
       try {
-        return { ...patch, ...cumplir_fila(existing, patch) };
+        return { ...patch, ...(await cumplir_fila(ctx, existing, patch)) };
       } catch (error) {
         const message = error instanceof Error ? error.message : "no se pudo cumplir el servicio";
         throw new KirletHttpError(400, "validation_error", message);

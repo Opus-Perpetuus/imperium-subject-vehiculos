@@ -242,7 +242,7 @@ export function cumplir_servicio(
   const lectura = numero(hecho.lectura);
   const recurrente_fecha = intervalo_dias > 0;
   const recurrente_lectura = intervalo_lectura > 0 && lectura != null;
-  if (!recurrente_fecha && !(intervalo_lectura > 0)) {
+  if (!recurrente_fecha && !recurrente_lectura) {
     return {
       estado: "cumplido",
       proxima_fecha: null,
@@ -254,10 +254,55 @@ export function cumplir_servicio(
   return {
     estado: "programado",
     proxima_fecha: recurrente_fecha ? sumar_dias(fecha, intervalo_dias) : fecha_iso(vista.proxima_fecha ?? null),
-    proxima_lectura: recurrente_lectura ? lectura! + intervalo_lectura : numero(vista.proxima_lectura),
+    proxima_lectura: recurrente_lectura ? lectura! + intervalo_lectura : null,
     ultima_fecha: fecha,
     ultima_lectura: lectura,
   };
+}
+
+export function lectura_que_manda(
+  rows: Array<{
+    fecha?: unknown;
+    valor?: unknown;
+    updated_at?: unknown;
+    is_active?: unknown;
+  }>,
+): { fecha: string; valor: number } | null {
+  let best: { fecha: string; valor: number; updated: string } | null = null;
+  for (const row of rows) {
+    if (row.is_active === false) continue;
+    const fecha = fecha_iso(row.fecha);
+    const valor = numero(row.valor);
+    if (!fecha || valor == null) continue;
+    const updated = String(row.updated_at ?? "");
+    if (!best || fecha > best.fecha || (fecha === best.fecha && updated >= best.updated)) {
+      best = { fecha, valor, updated };
+    }
+  }
+  return best ? { fecha: best.fecha, valor: best.valor } : null;
+}
+
+/** La que manda es la de fecha más nueva. Una anterior no pisa el odómetro que ya está cargado. */
+export function odometro_tras_lecturas(input: {
+  hoy: string;
+  actual: number | null;
+  lecturas: Array<{
+    fecha?: unknown;
+    valor?: unknown;
+    updated_at?: unknown;
+    is_active?: unknown;
+  }>;
+}): number | null {
+  const manda = lectura_que_manda(input.lecturas);
+  if (!manda) return input.actual;
+  const hoy = fecha_iso(input.hoy) ?? input.hoy.slice(0, 10);
+  if (manda.fecha >= hoy || input.actual == null) return manda.valor;
+  const actual_es_mas_vieja = input.lecturas.some((row) => {
+    if (row.is_active === false) return false;
+    const fecha = fecha_iso(row.fecha);
+    return fecha != null && fecha < manda.fecha && numero(row.valor) === input.actual;
+  });
+  return actual_es_mas_vieja ? manda.valor : input.actual;
 }
 
 type Fila = Record<string, unknown>;
