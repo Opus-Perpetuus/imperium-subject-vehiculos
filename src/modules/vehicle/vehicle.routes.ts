@@ -88,7 +88,7 @@ export const vehicle_module = define_module({
   menu: [
     {
       id: "vehiculos.vehicle",
-      label: "Padrón de vehículos",
+      label: "Registro de vehículos",
       order: 10,
       pageId: "vehiculos.vehicle",
       path: "padron-vehiculos",

@@ -14,13 +14,13 @@ export const vehicle_pages: KirletPageDecl[] = [
       build_feature_shell_page({
         id: "vehiculos.vehicle",
         owner: "subject-vehiculos",
-        title: "Padrón de vehículos",
+        title: "Registro de vehículos",
         props: {
           basePath: "padron-vehiculos",
           idKey: "id",
           nameKey: "etiqueta",
           view: {
-            title: "Padrón de vehículos",
+            title: "Registro de vehículos",
             subtitle: "Registra y consulta cada unidad: placas, número económico, marca y modelo",
             pluralLabel: "vehículos",
             singularLabel: "vehículo",

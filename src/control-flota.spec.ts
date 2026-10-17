@@ -591,7 +591,7 @@ describe("subject de vehículos", () => {
       expect(raiz.label).toBe("Vehículos");
       const padron = raiz.children.find((item) => item.id === "vehiculos.vehicle");
       expect(padron).toMatchObject({
-        label: "Padrón de vehículos",
+        label: "Registro de vehículos",
         path: "padron-vehiculos",
         pageId: "vehiculos.vehicle",
       });

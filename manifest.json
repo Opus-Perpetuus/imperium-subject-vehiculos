@@ -95,7 +95,7 @@
       "children": [
         {
           "id": "vehiculos.vehicle",
-          "label": "Padrón de vehículos",
+          "label": "Registro de vehículos",
           "pageId": "vehiculos.vehicle",
           "order": 10,
           "path": "padron-vehiculos",
