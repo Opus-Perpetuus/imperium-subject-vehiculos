@@ -1,4 +1,6 @@
 import { define_crud, define_module, define_routes } from "@opus-perpetuus/imperium-core-kit";
+import { etiqueta_vehiculo } from "../../control.ts";
+import { lectura_con_nombre } from "../../recurso.ts";
 import { vehicle_pages } from "./vehicle.pages.ts";
 import { vehicle_tables } from "./vehicle.tables.ts";
 
@@ -35,8 +37,19 @@ const vehicle_crud = define_crud({
       serie: { type: "string", search: true },
       lectura_km: { type: "number" },
       lectura_horas: { type: "number" },
+      etiqueta: { type: "string", search: true },
     },
-    options_map: { value: "id", label: "name" },
+    options_map: { value: "id", label: "etiqueta" },
+    hooks: {
+      before_create(_ctx, row) {
+        row.etiqueta = etiqueta_vehiculo(row);
+        return row;
+      },
+      before_update(_ctx, _id, patch, existing) {
+        patch.etiqueta = etiqueta_vehiculo({ ...existing, ...patch });
+        return patch;
+      },
+    },
   });
 
 export const vehicle_module = define_module({
@@ -68,19 +81,19 @@ export const vehicle_module = define_module({
         };
       },
     }),
-    ...vehicle_crud,
+    ...lectura_con_nombre(vehicle_crud, "vehicle", "unidad"),
   ],
   tables: vehicle_tables,
   pages: vehicle_pages,
   menu: [
     {
       id: "vehiculos.vehicle",
-      label: "Vehículos",
+      label: "Padrón de vehículos",
       order: 10,
       pageId: "vehiculos.vehicle",
-      path: "vehicle",
+      path: "padron-vehiculos",
       permission: "subject.vehiculos.vehicle.read",
-      icon: "document",
+      icon: "fa-bus",
     }
     ],
 });

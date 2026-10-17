@@ -40,11 +40,11 @@
     },
     {
       "id": "subject.vehiculos.falla.read",
-      "label": "Ver Reportes de falla"
+      "label": "Ver Fallas"
     },
     {
       "id": "subject.vehiculos.falla.write",
-      "label": "Editar Reportes de falla"
+      "label": "Editar Fallas"
     },
     {
       "id": "subject.vehiculos.mantenimiento-correctivo.read",
@@ -95,12 +95,12 @@
       "children": [
         {
           "id": "vehiculos.vehicle",
-          "label": "Vehículos",
+          "label": "Padrón de vehículos",
           "pageId": "vehiculos.vehicle",
           "order": 10,
-          "path": "vehicle",
+          "path": "padron-vehiculos",
           "permission": "subject.vehiculos.vehicle.read",
-          "icon": "document"
+          "icon": "fa-bus"
         },
         {
           "id": "vehiculos.plantilla-revision",
@@ -122,7 +122,7 @@
         },
         {
           "id": "vehiculos.falla",
-          "label": "Reportes de falla",
+          "label": "Fallas",
           "pageId": "vehiculos.falla",
           "order": 40,
           "path": "falla",
@@ -189,7 +189,7 @@
   "pages": [
     {
       "id": "vehiculos.vehicle",
-      "path": "vehicle",
+      "path": "padron-vehiculos",
       "permission": "subject.vehiculos.vehicle.read"
     },
     {

@@ -121,8 +121,124 @@ export function normalizar_items(value: unknown): ItemRevision[] | ErrorNorm {
   return items;
 }
 
+/** El feature-shell no repite campos. Lo que no cabe en estos renglones sigue en `items`. */
+export const RANURAS_REVISION = 30;
+
+export const RESULTADO_OPCIONES: Array<{ value: ResultadoRevision; label: string }> = [
+  { value: "pasa", label: "Pasa" },
+  { value: "falla", label: "Falla" },
+  { value: "na", label: "No aplica" },
+];
+
+export function clave_concepto(indice: number): string {
+  return `concepto_${indice}`;
+}
+
+export function clave_resultado(indice: number): string {
+  return `resultado_${indice}`;
+}
+
+/**
+ * Texto de una línea por concepto, o la lista que ya guardan las plantillas.
+ * Una línea vacía no cuenta.
+ */
+export function conceptos_capturados(value: unknown): Array<{ concepto: string }> | ErrorNorm {
+  if (typeof value === "string") {
+    const lineas = value
+      .split(/\r?\n/)
+      .map((linea) => linea.trim())
+      .filter(Boolean);
+    return normalizar_plantilla(lineas);
+  }
+  return normalizar_plantilla(value);
+}
+
+export function texto_de_conceptos(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object") {
+        return String((item as Record<string, unknown>).concepto ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Nombre que se reconoce en un selector o en una lista: título y placas si hay. */
+export function etiqueta_vehiculo(row: {
+  name?: unknown;
+  placas?: unknown;
+  numero_economico?: unknown;
+}): string {
+  const nombre = String(row.name ?? "").trim();
+  const placas = String(row.placas ?? "").trim();
+  const economico = String(row.numero_economico ?? "").trim();
+  if (nombre && placas) return `${nombre} · ${placas}`;
+  if (placas && economico) return `${placas} · ${economico}`;
+  return nombre || placas || economico || "Vehículo";
+}
+
+/**
+ * Renglones que la persona llenó en el formulario. `null` si no mandó
+ * ninguno: no se borra lo que ya estaba (la plantilla, por ejemplo).
+ */
+export function filas_desde_ranuras(
+  row: Record<string, unknown>,
+  previos?: unknown,
+): ItemRevision[] | null {
+  const anteriores = Array.isArray(previos) ? previos : [];
+  let vio = false;
+  const items: ItemRevision[] = [];
+  for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
+    const concepto_key = clave_concepto(indice);
+    const resultado_key = clave_resultado(indice);
+    const nota_key = `nota_${indice}`;
+    if (concepto_key in row || resultado_key in row || nota_key in row) vio = true;
+    const concepto = String(row[concepto_key] ?? "").trim();
+    if (!concepto) continue;
+    const crudo = String(row[resultado_key] ?? "").trim().toLowerCase();
+    const resultado = RESULTADOS.has(crudo) ? (crudo as ResultadoRevision) : "na";
+    const item: ItemRevision = { concepto, resultado };
+    const anterior = anteriores[indice - 1];
+    const nota_previa =
+      anterior && typeof anterior === "object"
+        ? String((anterior as Record<string, unknown>).nota ?? "").trim()
+        : "";
+    const nota = nota_key in row ? String(row[nota_key] ?? "").trim() : nota_previa;
+    if (nota) item.nota = nota;
+    items.push(item);
+  }
+  if (!vio || items.length === 0) return null;
+  return items;
+}
+
+export function presentar_ranuras(value: unknown): Record<string, string> {
+  const list = Array.isArray(value) ? value : [];
+  const out: Record<string, string> = {};
+  for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
+    const raw = list[indice - 1];
+    const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    out[clave_concepto(indice)] = String(row.concepto ?? "");
+    out[clave_resultado(indice)] = String(row.resultado ?? "");
+    out[`nota_${indice}`] = String(row.nota ?? "");
+  }
+  return out;
+}
+
+export function quitar_ranuras(row: Record<string, unknown>): void {
+  for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
+    delete row[clave_concepto(indice)];
+    delete row[clave_resultado(indice)];
+    delete row[`nota_${indice}`];
+  }
+}
+
 export function normalizar_plantilla(value: unknown): Array<{ concepto: string }> | ErrorNorm {
   if (value == null || value === "") return [];
+  if (typeof value === "string") return conceptos_capturados(value);
   if (!Array.isArray(value)) return { error: "la plantilla debe ser una lista de conceptos" };
   const items: Array<{ concepto: string }> = [];
   for (const raw of value) {

@@ -4,10 +4,10 @@ import { API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts
 export const falla_module = definir_recurso({
   resource: "falla",
   table: "falla",
-  singular: "Reporte de falla",
-  plural: "Reportes de falla",
+  singular: "Falla",
+  plural: "Fallas",
   order: 40,
-  subtitle: "Fallas del vehículo, abiertas o cerradas, ligadas o no a una bitácora",
+  subtitle: "Documento que describe qué falló en el vehículo",
   columns: [
     { name: "vehicle_id", type: "text", notNull: true },
     { name: "bitacora_id", type: "text" },
@@ -29,7 +29,7 @@ export const falla_module = definir_recurso({
   list: [
     { key: "fecha", label: "Fecha" },
     { key: "name", label: "Falla" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "estado", label: "Estado" },
     { key: "prioridad", label: "Prioridad" },
   ],
@@ -47,7 +47,7 @@ export const falla_module = definir_recurso({
     { name: "description", component: "input-textarea", label: "Descripción" },
     {
       name: "prioridad",
-      component: "input-menu",
+      component: "input-radio-buttons",
       label: "Prioridad",
       options: [
         { value: "baja", label: "Baja" },

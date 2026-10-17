@@ -7,6 +7,7 @@ import {
 import {
   armar_recordatorios,
   cumplir_servicio,
+  etiqueta_vehiculo,
   fecha_iso,
   numero,
   pide_cumplir,
@@ -82,7 +83,7 @@ export const servicio_programado_module = definir_recurso({
   },
   list: [
     { key: "name", label: "Servicio" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "proxima_fecha", label: "Próxima fecha" },
     { key: "proxima_lectura", label: "Próxima lectura" },
     { key: "estado", label: "Estado" },
@@ -95,7 +96,7 @@ export const servicio_programado_module = definir_recurso({
     { name: "intervalo_dias", component: "input-number", label: "Repetir cada (días)", min: 0 },
     {
       name: "tipo_lectura",
-      component: "input-menu",
+      component: "input-radio-buttons",
       label: "Lectura de uso",
       options: [
         { value: "", label: "Solo fecha" },
@@ -109,7 +110,7 @@ export const servicio_programado_module = definir_recurso({
     { name: "aviso_lectura", component: "input-number", label: "Avisar unidades antes", min: 0 },
     {
       name: "estado",
-      component: "input-menu",
+      component: "input-radio-buttons",
       label: "Estado",
       help: "Marcarlo cumplido quita el aviso o corre la siguiente fecha o lectura.",
       options: [
@@ -142,7 +143,7 @@ export const servicio_programado_module = definir_recurso({
         { key: "estado", label: "Aviso" },
         { key: "clase", label: "Clase" },
         { key: "nombre", label: "Nombre" },
-        { key: "vehicle_id", label: "Vehículo" },
+        { key: "vehiculo", label: "Vehículo" },
         { key: "proxima_fecha", label: "Fecha" },
         { key: "motivo", label: "Motivo" },
       ],
@@ -174,7 +175,19 @@ export const servicio_programado_module = definir_recurso({
           horas: numero(vehicle.lectura_horas),
         };
       }
-      return armar_recordatorios({ hoy, servicios, documentos, lecturas });
+      const avisos = armar_recordatorios({ hoy, servicios, documentos, lecturas });
+      const nombres = new Map(
+        vehiculos.map((vehicle) => [String(vehicle.id), etiqueta_vehiculo(vehicle)]),
+      );
+      const con_nombre = <T extends { vehicle_id: string }>(fila: T) => ({
+        ...fila,
+        vehiculo: nombres.get(fila.vehicle_id) ?? fila.vehicle_id,
+      });
+      return {
+        data: avisos.data.map(con_nombre),
+        vencidos: avisos.vencidos.map(con_nombre),
+        por_vencer: avisos.por_vencer.map(con_nombre),
+      };
     },
     "POST /servicio-programado/:id/cumplir": async (ctx) => {
       const existing = await ctx.data.findOne("servicio_programado", { id: ctx.params.id });

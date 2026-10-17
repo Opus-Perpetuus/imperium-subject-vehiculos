@@ -1,5 +1,5 @@
 import { estado_abierto } from "../../control.ts";
-import { ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
+import { API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
 
 export const mantenimiento_preventivo_module = definir_recurso({
   resource: "mantenimiento-preventivo",
@@ -27,12 +27,18 @@ export const mantenimiento_preventivo_module = definir_recurso({
   list: [
     { key: "fecha", label: "Fecha" },
     { key: "name", label: "Trabajo" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "estado", label: "Estado" },
   ],
   form: [
     { name: "name", component: "input-text", label: "Título", required: true },
     VEHICULO,
+    {
+      name: "servicio_programado_id",
+      component: "input-datalist",
+      label: "Servicio programado",
+      optionsSource: `${API}/servicio-programado?as=options&limite=1000`,
+    },
     { name: "fecha", component: "input-date", label: "Fecha" },
     { name: "description", component: "input-textarea", label: "Qué se previene" },
     { name: "trabajo_realizado", component: "input-textarea", label: "Trabajo realizado" },

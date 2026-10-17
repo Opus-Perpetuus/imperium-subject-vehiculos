@@ -56,7 +56,7 @@ export const lectura_uso_module = definir_recurso({
   },
   list: [
     { key: "fecha", label: "Fecha" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "tipo", label: "Tipo" },
     { key: "valor", label: "Lectura" },
   ],
@@ -65,7 +65,7 @@ export const lectura_uso_module = definir_recurso({
     VEHICULO,
     {
       name: "tipo",
-      component: "input-menu",
+      component: "input-radio-buttons",
       label: "Tipo",
       required: true,
       options: [

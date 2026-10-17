@@ -4,15 +4,57 @@ import {
   now_iso,
   today_iso,
   type DomainRow,
+  type FeatureShellFieldDescriptor,
 } from "@opus-perpetuus/imperium-core-kit";
 import {
   bitacora_revisada,
+  clave_concepto,
+  clave_resultado,
   es_error,
+  etiqueta_vehiculo,
+  filas_desde_ranuras,
   normalizar_imagenes,
   normalizar_items,
   numero,
+  presentar_ranuras,
+  quitar_ranuras,
+  RANURAS_REVISION,
+  RESULTADO_OPCIONES,
 } from "../../control.ts";
 import { API, VEHICULO, definir_recurso, define_routes } from "../../recurso.ts";
+
+const RANURAS: Record<string, { type: "string" }> = {};
+const RANURAS_FORM: FeatureShellFieldDescriptor[] = [];
+for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
+  const concepto = clave_concepto(indice);
+  const resultado = clave_resultado(indice);
+  const nota = `nota_${indice}`;
+  RANURAS[concepto] = { type: "string" };
+  RANURAS[resultado] = { type: "string" };
+  RANURAS[nota] = { type: "string" };
+  RANURAS_FORM.push(
+    {
+      name: concepto,
+      component: "input-text",
+      label: `Concepto ${indice}`,
+      ...(indice === 1
+        ? { help: "Escribe qué se revisa. El resultado se elige con los botones. Un renglón vacío no se guarda." }
+        : {}),
+    },
+    {
+      name: resultado,
+      component: "input-radio-buttons",
+      label: `Resultado ${indice}`,
+      options: RESULTADO_OPCIONES,
+    },
+    {
+      name: nota,
+      component: "input-text",
+      label: `Nota ${indice}`,
+      ...(indice === 1 ? { help: "Opcional. Si algo falla, anota dónde se vio." } : {}),
+    },
+  );
+}
 
 function aplicar(patch: DomainRow, base?: DomainRow): DomainRow {
   const next = { ...patch };
@@ -42,6 +84,7 @@ export const bitacora_module = definir_recurso({
   columns: [
     { name: "vehicle_id", type: "text", notNull: true },
     { name: "plantilla_id", type: "text" },
+    { name: "plantilla_nombre", type: "text" },
     { name: "fecha", type: "text" },
     { name: "items", type: "json" },
     { name: "imagenes", type: "json" },
@@ -52,7 +95,9 @@ export const bitacora_module = definir_recurso({
   fields: {
     vehicle_id: { type: "string", required: true, search: true },
     plantilla_id: { type: "string" },
+    plantilla_nombre: { type: "string", search: true },
     fecha: { type: "string", search: true },
+    ...RANURAS,
     items: { type: "json" },
     imagenes: { type: "json" },
     firma_realiza: { type: "string" },
@@ -62,7 +107,7 @@ export const bitacora_module = definir_recurso({
   list: [
     { key: "fecha", label: "Fecha" },
     { key: "name", label: "Título" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "revisada", label: "Revisada" },
   ],
   form: [
@@ -76,12 +121,7 @@ export const bitacora_module = definir_recurso({
     },
     { name: "fecha", component: "input-date", label: "Fecha" },
     { name: "description", component: "input-textarea", label: "Observaciones" },
-    {
-      name: "items",
-      component: "input-json",
-      label: "Ítems de revisión",
-      help: "Cada ítem: concepto y resultado pasa, falla o na.",
-    },
+    ...RANURAS_FORM,
     {
       name: "imagenes",
       component: "input-image",
@@ -117,6 +157,11 @@ export const bitacora_module = definir_recurso({
     return copy;
   },
   extra_routes: define_routes({
+    "GET /bitacora/:id": async (ctx) => {
+      const row = await ctx.data.findOne("bitacora", { id: ctx.params.id });
+      if (!row || row.is_active === false) return ctx.not_found();
+      return { data: { ...row, ...presentar_ranuras(row.items) } };
+    },
     "POST /bitacora/:id/reportar-falla": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!bitacora || bitacora.is_active === false) return ctx.not_found();
@@ -130,12 +175,16 @@ export const bitacora_module = definir_recurso({
       const descripcion =
         String(body.descripcion ?? body.description ?? "").trim() ||
         (concepto ? `Falla en revisión: ${concepto}` : "Falla anotada en bitácora");
+      const unidad = await ctx.data.findOne("vehicle", {
+        id: String(bitacora.vehicle_id ?? ""),
+      });
       const ts = now_iso();
       const created = await ctx.data.insert("falla", {
         id: new_id("falla"),
         name: String(body.name ?? (concepto || "Falla de bitácora")),
         description: descripcion,
         vehicle_id: bitacora.vehicle_id,
+        vehiculo: unidad ? etiqueta_vehiculo(unidad) : "",
         bitacora_id: bitacora.id,
         concepto,
         prioridad: String(body.prioridad ?? "media"),
@@ -150,7 +199,14 @@ export const bitacora_module = definir_recurso({
   }),
   hooks: {
     async before_create(ctx, row) {
+      const capturadas = filas_desde_ranuras(row);
+      quitar_ranuras(row);
       if (!row.fecha) row.fecha = today_iso();
+      if (capturadas) {
+        const items = normalizar_items(capturadas);
+        if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
+        row.items = items;
+      }
       const sin_items = row.items == null || (Array.isArray(row.items) && row.items.length === 0);
       if (row.plantilla_id && sin_items) {
         const plantilla = await ctx.data.findOne("plantilla_revision", {
@@ -166,12 +222,26 @@ export const bitacora_module = definir_recurso({
           ),
           resultado: "na",
         }));
+        row.plantilla_nombre = String(plantilla.name ?? "");
+      } else if (row.plantilla_id) {
+        const plantilla = await ctx.data.findOne("plantilla_revision", {
+          id: String(row.plantilla_id),
+        });
+        if (plantilla) row.plantilla_nombre = String(plantilla.name ?? "");
       }
       if (row.items == null) row.items = [];
       if (row.imagenes == null) row.imagenes = [];
       return aplicar(row);
     },
     before_update(_ctx, _id, patch, existing) {
+      const capturadas = filas_desde_ranuras(patch, existing.items);
+      quitar_ranuras(patch);
+      if (capturadas) {
+        const items = normalizar_items(capturadas);
+        if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
+        const previos = Array.isArray(existing.items) ? existing.items : [];
+        patch.items = [...items, ...previos.slice(RANURAS_REVISION)];
+      }
       return aplicar(patch, existing);
     },
   },

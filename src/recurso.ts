@@ -8,11 +8,114 @@ import {
   type DomainRow,
   type FeatureShellFieldDescriptor,
   type KirletColumnDecl,
+  type KirletCtx,
   type KirletMenuDecl,
   type KirletModuleDef,
   type KirletPageDecl,
   type KirletRouteTable,
 } from "@opus-perpetuus/imperium-core-kit";
+import { etiqueta_vehiculo } from "./control.ts";
+
+type Cuerpo = { data?: unknown };
+
+function es_opcion(row: unknown): row is { value?: unknown; label?: unknown } {
+  return !!row && typeof row === "object" && "value" in row && "label" in row && !("id" in row);
+}
+
+async function vehiculos_por_id(ctx: KirletCtx, ids: string[]): Promise<Map<string, DomainRow>> {
+  const unicos = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (!unicos.length) return new Map();
+  const filas = await ctx.data.findMany("vehicle", {
+    where: { id: { in: unicos } },
+    limit: unicos.length,
+  });
+  return new Map(filas.map((fila) => [String(fila.id), fila]));
+}
+
+/**
+ * La semilla y las unidades ya guardadas no tienen `etiqueta` ni `vehiculo`.
+ * El selector y la lista leen esos campos: si vienen vacíos, se arman aquí
+ * con el nombre y las placas.
+ */
+export async function respuesta_con_vehiculo(
+  ctx: KirletCtx,
+  body: unknown,
+  modo: "unidad" | "relacion",
+): Promise<unknown> {
+  if (!body || typeof body !== "object" || !("data" in body)) return body;
+  const data = (body as Cuerpo).data;
+  if (Array.isArray(data)) {
+    return { ...body, data: await filas_con_vehiculo(ctx, data, modo) };
+  }
+  if (data && typeof data === "object") {
+    const [fila] = await filas_con_vehiculo(ctx, [data], modo);
+    return { ...body, data: fila };
+  }
+  return body;
+}
+
+async function filas_con_vehiculo(
+  ctx: KirletCtx,
+  rows: unknown[],
+  modo: "unidad" | "relacion",
+): Promise<unknown[]> {
+  if (rows.length > 0 && rows.every(es_opcion)) {
+    const faltan = rows.filter((row) => !String(row.label ?? "").trim());
+    if (!faltan.length) return rows;
+    const por_id = await vehiculos_por_id(
+      ctx,
+      faltan.map((row) => String(row.value ?? "")),
+    );
+    return rows.map((row) => {
+      if (String(row.label ?? "").trim()) return row;
+      const vehicle = por_id.get(String(row.value ?? ""));
+      return vehicle ? { ...row, label: etiqueta_vehiculo(vehicle) } : row;
+    });
+  }
+  if (modo === "unidad") {
+    return rows.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const unidad = row as DomainRow;
+      if (String(unidad.etiqueta ?? "").trim()) return unidad;
+      return { ...unidad, etiqueta: etiqueta_vehiculo(unidad) };
+    });
+  }
+  const pendientes = rows.filter(
+    (row) =>
+      row &&
+      typeof row === "object" &&
+      String((row as DomainRow).vehicle_id ?? "").trim() &&
+      !String((row as DomainRow).vehiculo ?? "").trim(),
+  );
+  if (!pendientes.length) return rows;
+  const por_id = await vehiculos_por_id(
+    ctx,
+    pendientes.map((row) => String((row as DomainRow).vehicle_id ?? "")),
+  );
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const fila = row as DomainRow;
+    if (String(fila.vehiculo ?? "").trim()) return fila;
+    const vehicle = por_id.get(String(fila.vehicle_id ?? ""));
+    return vehicle ? { ...fila, vehiculo: etiqueta_vehiculo(vehicle) } : fila;
+  });
+}
+
+export function lectura_con_nombre(
+  routes: KirletRouteTable,
+  resource: string,
+  modo: "unidad" | "relacion",
+): KirletRouteTable {
+  const patrones = new Set([`GET /${resource}`, `GET /${resource}/:id`]);
+  return routes.map((route) => {
+    if (!patrones.has(route.pattern)) return route;
+    const handler = route.handler as (ctx: KirletCtx) => Promise<unknown>;
+    return {
+      ...route,
+      handler: async (ctx: KirletCtx) => respuesta_con_vehiculo(ctx, await handler(ctx), modo),
+    };
+  });
+}
 
 export const API = "api://m/subject-vehiculos";
 
@@ -49,17 +152,50 @@ export const VEHICULO: FeatureShellFieldDescriptor = {
   label: "Vehículo",
   required: true,
   optionsSource: `${API}/vehicle?as=options&limite=1000`,
+  help: "Busca por el nombre o las placas. No hace falta el identificador.",
 };
 
 export const ESTADO_ABIERTO: FeatureShellFieldDescriptor = {
   name: "estado",
-  component: "input-menu",
+  component: "input-radio-buttons",
   label: "Estado",
   options: [
     { value: "abierto", label: "Abierto" },
     { value: "cerrado", label: "Cerrado" },
   ],
 };
+
+async function anotar_vehiculo(ctx: KirletCtx, row: DomainRow, vehicle_id: unknown) {
+  const id = String(vehicle_id ?? "").trim();
+  if (!id) return;
+  const vehicle = await ctx.data.findOne("vehicle", { id });
+  if (!vehicle) return;
+  row.vehiculo = etiqueta_vehiculo(vehicle);
+}
+
+function con_vehiculo(hooks: CrudHooks | undefined): CrudHooks {
+  return {
+    async before_create(ctx, row) {
+      const next = hooks?.before_create ? await hooks.before_create(ctx, row) : row;
+      await anotar_vehiculo(ctx, next, next.vehicle_id);
+      return next;
+    },
+    async before_update(ctx, id, patch, existing) {
+      const next = hooks?.before_update
+        ? await hooks.before_update(ctx, id, patch, existing)
+        : patch;
+      const vehicle_id = "vehicle_id" in next ? next.vehicle_id : existing.vehicle_id;
+      if ("vehicle_id" in next || !existing.vehiculo) {
+        await anotar_vehiculo(ctx, next, vehicle_id);
+      }
+      return next;
+    },
+    after_create: hooks?.after_create,
+    after_update: hooks?.after_update,
+    before_delete: hooks?.before_delete,
+    after_delete: hooks?.after_delete,
+  };
+}
 
 type Columna = { key: string; label: string };
 
@@ -182,8 +318,12 @@ export function definir_recurso(spec: RecursoSpec): KirletModuleDef {
     fields: spec.form,
     acciones: spec.acciones,
   });
-  const columns = [...AUDIT_COLUMNS, ...spec.columns];
-  const has_vehicle = columns.some((column) => column.name === "vehicle_id");
+  const has_vehicle = spec.columns.some((column) => column.name === "vehicle_id");
+  const columns = [
+    ...AUDIT_COLUMNS,
+    ...spec.columns,
+    ...(has_vehicle ? [{ name: "vehiculo", type: "text" as const }] : []),
+  ];
   const crud = define_crud({
     resource: spec.resource,
     table: spec.table,
@@ -194,9 +334,15 @@ export function definir_recurso(spec: RecursoSpec): KirletModuleDef {
     default_sort: "created_at:desc",
     id_prefix: spec.table.slice(0, 12),
     options_map: { value: "id", label: "name" },
-    hooks: spec.hooks,
-    fields: { ...AUDIT_FIELDS, ...spec.fields },
+    hooks: has_vehicle ? con_vehiculo(spec.hooks) : spec.hooks,
+    fields: {
+      ...AUDIT_FIELDS,
+      ...spec.fields,
+      ...(has_vehicle ? { vehiculo: { type: "string" as const, search: true } } : {}),
+    },
   });
+  const extra = spec.extra_routes ?? [];
+  const reemplaza = new Set(extra.map((route) => route.pattern));
   return define_module({
     resource: spec.resource,
     labels: {
@@ -205,7 +351,15 @@ export function definir_recurso(spec: RecursoSpec): KirletModuleDef {
       read: `Ver ${spec.plural}`,
       write: `Editar ${spec.plural}`,
     },
-    routes: [...(spec.extra_routes ?? []), ...crud],
+    // El kit no admite dos rutas con el mismo patrón. La extra (el GET de la
+    // bitácora, que abre las ranuras) sustituye a la del CRUD.
+    routes: has_vehicle
+      ? lectura_con_nombre(
+          [...extra, ...crud.filter((route) => !reemplaza.has(route.pattern))],
+          spec.resource,
+          "relacion",
+        )
+      : [...extra, ...crud.filter((route) => !reemplaza.has(route.pattern))],
     tables: [
       {
         name: spec.table,

@@ -59,7 +59,7 @@ export const mantenimiento_correctivo_module = definir_recurso({
   list: [
     { key: "fecha", label: "Fecha" },
     { key: "name", label: "Trabajo" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "estado", label: "Estado" },
     { key: "costo", label: "Costo" },
   ],

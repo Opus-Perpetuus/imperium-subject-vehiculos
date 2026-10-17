@@ -36,6 +36,21 @@ async function api(server: Server, method: string, path: string, body?: unknown)
   return { status: response.status, json };
 }
 
+type Campo = {
+  name?: string;
+  component?: string;
+  label?: string;
+  help?: string;
+  optionsSource?: string;
+  options?: Array<{ value?: string; label?: string }>;
+};
+
+function campos_de(pagina: {
+  page?: { props?: { form?: { fields?: Campo[] } } };
+}): Campo[] {
+  return pagina.page?.props?.form?.fields ?? [];
+}
+
 describe("cálculo de flota", () => {
   test("un nombre escrito no revisa la bitácora", () => {
     expect(firma_es_trazo("Ana López")).toBe(false);
@@ -205,6 +220,7 @@ describe("subject de vehículos", () => {
       expect(falla.json.data.bitacora_id).toBe(bitacora_id);
       expect(falla.json.data.estado).toBe("abierto");
       expect(falla.json.data.vehicle_id).not.toBe("");
+      expect(String(falla.json.data.vehiculo)).toContain("ABC-12-34");
       const falla_id = falla.json.data.id as string;
 
       const correctivo = await api(server, "POST", "/mantenimiento-correctivo", {
@@ -555,6 +571,343 @@ describe("subject de vehículos", () => {
       });
       const avisos = await api(server, "GET", "/servicio-programado/recordatorios");
       expect(avisos.json.vencidos.map((aviso: { id: string }) => aviso.id)).toContain(servicio.json.data.id);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("el manifiesto publica el padrón como hijo distinto de la carpeta", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const manifiesto = await api(server, "GET", "/manifest");
+      expect(manifiesto.status).toBe(200);
+      const raiz = manifiesto.json.menu[0] as {
+        id: string;
+        label: string;
+        path?: string;
+        children: Array<{ id: string; label: string; path: string; pageId: string }>;
+      };
+      expect(raiz.id).toBe("vehiculos.root");
+      expect(raiz.label).toBe("Vehículos");
+      const padron = raiz.children.find((item) => item.id === "vehiculos.vehicle");
+      expect(padron).toMatchObject({
+        label: "Padrón de vehículos",
+        path: "padron-vehiculos",
+        pageId: "vehiculos.vehicle",
+      });
+      expect(padron?.path).not.toBe("vehicle");
+      expect(raiz.children.filter((item) => item.path === "padron-vehiculos")).toHaveLength(1);
+      const pagina = manifiesto.json.pages.find(
+        (item: { id: string }) => item.id === "vehiculos.vehicle",
+      );
+      expect(pagina.path).toBe("padron-vehiculos");
+      expect(raiz.children.find((item) => item.id === "vehiculos.falla")?.label).toBe("Fallas");
+      expect(raiz.children.find((item) => item.path === "recordatorios")?.label).toBe("Recordatorios");
+
+      const alta = await api(server, "GET", "/pages/vehiculos.vehicle");
+      expect(alta.status).toBe(200);
+      const campos = campos_de(alta.json);
+      expect(campos.some((campo) => campo.name === "ref")).toBe(false);
+      expect(campos.find((campo) => campo.name === "chofer")).toMatchObject({
+        component: "input-datalist",
+        label: "Chofer",
+      });
+      expect(campos.find((campo) => campo.name === "chofer_nombre")?.component).toBe("input-text");
+      expect(campos.find((campo) => campo.name === "tipo_unidad")?.component).toBe("input-radio-buttons");
+      expect(campos.find((campo) => campo.name === "estado_operativo")?.component).toBe("input-radio-buttons");
+      expect(alta.json.page.props.data.create.action).toBe("api://m/subject-vehiculos/vehicle");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("plantilla y bitácora no piden JSON y guardan conceptos con botones pasa, falla y no aplica", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      for (const id of ["vehiculos.plantilla-revision", "vehiculos.bitacora"]) {
+        const pagina = await api(server, "GET", `/pages/${id}`);
+        expect(pagina.status).toBe(200);
+        const campos = campos_de(pagina.json);
+        expect(campos.some((campo) => campo.component === "input-json" || campo.component === "input-code-editor")).toBe(
+          false,
+        );
+        for (const campo of campos) {
+          expect(String(campo.help ?? "")).not.toContain("{");
+          expect(String(campo.help ?? "")).not.toContain("concepto\":");
+        }
+      }
+
+      const plantilla_pagina = await api(server, "GET", "/pages/vehiculos.plantilla-revision");
+      expect(campos_de(plantilla_pagina.json).find((campo) => campo.name === "conceptos")).toMatchObject({
+        component: "input-textarea",
+        label: "Conceptos",
+      });
+
+      const bitacora_pagina = await api(server, "GET", "/pages/vehiculos.bitacora");
+      const resultado = campos_de(bitacora_pagina.json).find((campo) => campo.name === "resultado_1");
+      expect(resultado?.component).toBe("input-radio-buttons");
+      expect(resultado?.options?.map((opcion) => opcion.label)).toEqual(["Pasa", "Falla", "No aplica"]);
+      expect(resultado?.options?.map((opcion) => opcion.value)).toEqual(["pasa", "falla", "na"]);
+
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "Salida",
+        conceptos: "Frenos\nLlantas",
+      });
+      expect(plantilla.status).toBe(201);
+      expect(plantilla.json.data.items).toEqual([{ concepto: "Frenos" }, { concepto: "Llantas" }]);
+
+      const unidad = await api(server, "POST", "/vehicle", {
+        name: "Unidad patio",
+        placas: "PAD-01",
+      });
+      const por_botones = await api(server, "POST", "/bitacora", {
+        name: "Revisión de patio",
+        vehicle_id: unidad.json.data.id,
+        concepto_1: "Frenos",
+        resultado_1: "pasa",
+        concepto_2: "Luces",
+        resultado_2: "falla",
+      });
+      expect(por_botones.status).toBe(201);
+      expect(por_botones.json.data.items).toEqual([
+        { concepto: "Frenos", resultado: "pasa" },
+        { concepto: "Luces", resultado: "falla" },
+      ]);
+      const leida = await api(server, "GET", `/bitacora/${por_botones.json.data.id}`);
+      expect(leida.json.data.concepto_1).toBe("Frenos");
+      expect(leida.json.data.resultado_1).toBe("pasa");
+      expect(leida.json.data.concepto_2).toBe("Luces");
+      expect(leida.json.data.resultado_2).toBe("falla");
+
+      const copiada = await api(server, "POST", "/bitacora", {
+        name: "Desde plantilla",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+      });
+      expect(copiada.json.data.items).toEqual([
+        { concepto: "Frenos", resultado: "na" },
+        { concepto: "Llantas", resultado: "na" },
+      ]);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("los formularios usan botones y selectores por nombre, y la lista muestra las placas", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const unidad = await api(server, "POST", "/vehicle", {
+        name: "Camioneta de obra",
+        placas: "OBR-22",
+        numero_economico: "22",
+        marca: "Nissan",
+        modelo: "NP300",
+        chofer_nombre: "Marta Ruiz",
+        tipo_unidad: "pickup",
+        estado_operativo: "en_servicio",
+      });
+      expect(unidad.status).toBe(201);
+      expect(unidad.json.data.ref == null || unidad.json.data.ref === "").toBe(true);
+      expect(unidad.json.data.etiqueta).toBe("Camioneta de obra · OBR-22");
+
+      const lista = await api(server, "GET", "/vehicle");
+      const fila = (lista.json.data as Array<{ id: string; etiqueta: string; placas: string }>).find(
+        (row) => row.id === unidad.json.data.id,
+      );
+      expect(fila?.placas).toBe("OBR-22");
+      expect(fila?.etiqueta).toContain("OBR-22");
+
+      const opciones = await api(server, "GET", "/vehicle?as=options&limite=1000");
+      const opcion = (opciones.json.data as Array<{ value: string; label: string }>).find(
+        (row) => row.value === unidad.json.data.id,
+      );
+      expect(opcion?.label).toContain("OBR-22");
+      expect(opcion?.label).not.toBe(unidad.json.data.id);
+
+      const paginas = [
+        "vehiculos.vehicle",
+        "vehiculos.falla",
+        "vehiculos.mantenimiento-correctivo",
+        "vehiculos.mantenimiento-preventivo",
+        "vehiculos.servicio-programado",
+        "vehiculos.lectura-uso",
+        "vehiculos.documento-vehiculo",
+        "vehiculos.plantilla-revision",
+        "vehiculos.bitacora",
+      ];
+      const relaciones = new Set([
+        "vehicle_id",
+        "plantilla_id",
+        "chofer",
+        "falla_id",
+        "servicio_programado_id",
+        "bitacora_id",
+        "correctivo_id",
+      ]);
+      for (const id of paginas) {
+        const pagina = await api(server, "GET", `/pages/${id}`);
+        expect(pagina.status).toBe(200);
+        for (const campo of campos_de(pagina.json)) {
+          expect(campo.component === "input-json" || campo.component === "input-code-editor").toBe(false);
+          if (campo.name && relaciones.has(campo.name)) {
+            expect(campo.component).toBe("input-datalist");
+            expect(String(campo.optionsSource ?? "")).toContain("as=options");
+          }
+        }
+      }
+      const falla_form = campos_de((await api(server, "GET", "/pages/vehiculos.falla")).json);
+      expect(falla_form.find((campo) => campo.name === "prioridad")?.component).toBe("input-radio-buttons");
+      expect(falla_form.find((campo) => campo.name === "estado")?.component).toBe("input-radio-buttons");
+      const documento_form = campos_de((await api(server, "GET", "/pages/vehiculos.documento-vehiculo")).json);
+      expect(documento_form.find((campo) => campo.name === "tipo")?.component).toBe("input-radio-buttons");
+      const lectura_form = campos_de((await api(server, "GET", "/pages/vehiculos.lectura-uso")).json);
+      expect(lectura_form.find((campo) => campo.name === "tipo")?.component).toBe("input-radio-buttons");
+      const servicio_form = campos_de((await api(server, "GET", "/pages/vehiculos.servicio-programado")).json);
+      expect(servicio_form.find((campo) => campo.name === "tipo_lectura")?.component).toBe("input-radio-buttons");
+      expect(servicio_form.find((campo) => campo.name === "estado")?.component).toBe("input-radio-buttons");
+      expect(servicio_form.some((campo) => campo.name === "vehicle_id")).toBe(true);
+
+      const falla = await api(server, "POST", "/falla", {
+        name: "Freno suave",
+        vehicle_id: unidad.json.data.id,
+        concepto: "Frenos",
+        prioridad: "alta",
+        description: "El pedal baja de más",
+      });
+      expect(falla.status).toBe(201);
+      const fallas = await api(server, "GET", "/falla");
+      const documento = (fallas.json.data as Array<{ id: string; vehiculo: string }>).find(
+        (row) => row.id === falla.json.data.id,
+      );
+      expect(String(documento?.vehiculo)).toContain("OBR-22");
+      expect(String((await api(server, "GET", "/pages/vehiculos.falla")).json.title)).toBe("Fallas");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("una unidad sin etiqueta se elige y se lista por su nombre o sus placas", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const ts = "2026-01-01T00:00:00.000Z";
+      const vehicle_id = "veh_sin_etiqueta";
+      await server.data.insert("vehicle", {
+        id: vehicle_id,
+        name: "Camión de patio",
+        placas: "PAT-09",
+        numero_economico: "9",
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      const opciones = await api(server, "GET", "/vehicle?as=options&limite=1000");
+      const opcion = (opciones.json.data as Array<{ value: string; label: string }>).find(
+        (row) => row.value === vehicle_id,
+      );
+      expect(opcion?.label).toBe("Camión de patio · PAT-09");
+      const lista = await api(server, "GET", "/vehicle");
+      const unidad = (lista.json.data as Array<{ id: string; etiqueta: string }>).find(
+        (row) => row.id === vehicle_id,
+      );
+      expect(unidad?.etiqueta).toBe("Camión de patio · PAT-09");
+
+      await server.data.insert("bitacora", {
+        id: "bit_sin_nombre",
+        name: "Revisión vieja",
+        vehicle_id,
+        fecha: "2026-01-01",
+        items: [],
+        is_active: true,
+        revisada: false,
+        created_at: ts,
+        updated_at: ts,
+      });
+      await server.data.insert("falla", {
+        id: "falla_sin_nombre",
+        name: "Falla vieja",
+        vehicle_id,
+        estado: "abierto",
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      const bitacoras = await api(server, "GET", "/bitacora");
+      const bitacora = (bitacoras.json.data as Array<{ id: string; vehiculo: string }>).find(
+        (row) => row.id === "bit_sin_nombre",
+      );
+      expect(bitacora?.vehiculo).toBe("Camión de patio · PAT-09");
+      const fallas = await api(server, "GET", "/falla");
+      const falla = (fallas.json.data as Array<{ id: string; vehiculo: string }>).find(
+        (row) => row.id === "falla_sin_nombre",
+      );
+      expect(falla?.vehiculo).toBe("Camión de patio · PAT-09");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("una bitácora de 13 conceptos muestra el último y no pierde la nota", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const conceptos = Array.from({ length: 13 }, (_, indice) => `Punto ${indice + 1}`).join("\n");
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "Lista larga",
+        conceptos,
+      });
+      expect(plantilla.json.data.items).toHaveLength(13);
+      const unidad = await api(server, "POST", "/vehicle", {
+        name: "Unidad larga",
+        placas: "LNG-13",
+      });
+      const creada = await api(server, "POST", "/bitacora", {
+        name: "Revisión larga",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+      });
+      expect(creada.json.data.items).toHaveLength(13);
+      expect(creada.json.data.items[12]).toEqual({ concepto: "Punto 13", resultado: "na" });
+
+      const pagina = await api(server, "GET", "/pages/vehiculos.bitacora");
+      const campos = campos_de(pagina.json);
+      expect(campos.find((campo) => campo.name === "concepto_13")?.component).toBe("input-text");
+      const resultado = campos.find((campo) => campo.name === "resultado_13");
+      expect(resultado?.component).toBe("input-radio-buttons");
+      expect(resultado?.options?.map((opcion) => opcion.label)).toEqual(["Pasa", "Falla", "No aplica"]);
+
+      const con_nota = await api(server, "POST", "/bitacora", {
+        name: "Con nota",
+        vehicle_id: unidad.json.data.id,
+        concepto_1: "Frenos",
+        resultado_1: "falla",
+        nota_1: "Bajo el cárter",
+      });
+      expect(con_nota.status).toBe(201);
+      expect(con_nota.json.data.items).toEqual([
+        { concepto: "Frenos", resultado: "falla", nota: "Bajo el cárter" },
+      ]);
+      const leida = await api(server, "GET", `/bitacora/${con_nota.json.data.id}`);
+      expect(leida.json.data.nota_1).toBe("Bajo el cárter");
+      const guardada = await api(server, "PATCH", `/bitacora/${con_nota.json.data.id}`, {
+        concepto_1: "Frenos",
+        resultado_1: "pasa",
+        nota_1: "Bajo el cárter",
+      });
+      expect(guardada.status).toBe(200);
+      expect(guardada.json.data.items).toEqual([
+        { concepto: "Frenos", resultado: "pasa", nota: "Bajo el cárter" },
+      ]);
+
+      const ranuras: Record<string, string> = {};
+      creada.json.data.items.forEach((item: { concepto: string }, indice: number) => {
+        ranuras[`concepto_${indice + 1}`] = item.concepto;
+        ranuras[`resultado_${indice + 1}`] = indice === 12 ? "pasa" : "na";
+      });
+      const marcada = await api(server, "PATCH", `/bitacora/${creada.json.data.id}`, ranuras);
+      expect(marcada.json.data.items).toHaveLength(13);
+      expect(marcada.json.data.items[12]).toEqual({ concepto: "Punto 13", resultado: "pasa" });
+      const otra = await api(server, "GET", `/bitacora/${creada.json.data.id}`);
+      expect(otra.json.data.concepto_13).toBe("Punto 13");
+      expect(otra.json.data.resultado_13).toBe("pasa");
     } finally {
       server.stop();
     }

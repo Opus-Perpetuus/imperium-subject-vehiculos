@@ -27,7 +27,7 @@ export const documento_vehiculo_module = definir_recurso({
   },
   list: [
     { key: "name", label: "Documento" },
-    { key: "vehicle_id", label: "Vehículo" },
+    { key: "vehiculo", label: "Vehículo" },
     { key: "tipo", label: "Tipo" },
     { key: "fecha_vencimiento", label: "Vence" },
     { key: "estado", label: "Estado" },
@@ -37,7 +37,7 @@ export const documento_vehiculo_module = definir_recurso({
     VEHICULO,
     {
       name: "tipo",
-      component: "input-menu",
+      component: "input-radio-buttons",
       label: "Tipo",
       required: true,
       options: [
