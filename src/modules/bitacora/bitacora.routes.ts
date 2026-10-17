@@ -5,8 +5,10 @@ import {
   today_iso,
   type DomainRow,
   type FeatureShellFieldDescriptor,
+  type KirletCtx,
 } from "@opus-perpetuus/imperium-core-kit";
 import {
+  bitacora_desde_plantilla,
   bitacora_revisada,
   clave_concepto,
   clave_resultado,
@@ -16,45 +18,28 @@ import {
   normalizar_imagenes,
   normalizar_items,
   numero,
-  presentar_ranuras,
   quitar_ranuras,
   RANURAS_REVISION,
-  RESULTADO_OPCIONES,
 } from "../../control.ts";
 import { API, VEHICULO, definir_recurso, define_routes } from "../../recurso.ts";
 
+// El formulario ya no pinta ranuras. Siguen declaradas porque el kit rechaza,
+// antes del hook, un cuerpo viejo con `concepto_N` que no esté en el esquema.
 const RANURAS: Record<string, { type: "string" }> = {};
-const RANURAS_FORM: FeatureShellFieldDescriptor[] = [];
 for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
-  const concepto = clave_concepto(indice);
-  const resultado = clave_resultado(indice);
-  const nota = `nota_${indice}`;
-  RANURAS[concepto] = { type: "string" };
-  RANURAS[resultado] = { type: "string" };
-  RANURAS[nota] = { type: "string" };
-  RANURAS_FORM.push(
-    {
-      name: concepto,
-      component: "input-text",
-      label: `Concepto ${indice}`,
-      ...(indice === 1
-        ? { help: "Escribe qué se revisa. El resultado se elige con los botones. Un renglón vacío no se guarda." }
-        : {}),
-    },
-    {
-      name: resultado,
-      component: "input-radio-buttons",
-      label: `Resultado ${indice}`,
-      options: RESULTADO_OPCIONES,
-    },
-    {
-      name: nota,
-      component: "input-text",
-      label: `Nota ${indice}`,
-      ...(indice === 1 ? { help: "Opcional. Si algo falla, anota dónde se vio." } : {}),
-    },
-  );
+  RANURAS[clave_concepto(indice)] = { type: "string" };
+  RANURAS[clave_resultado(indice)] = { type: "string" };
+  RANURAS[`nota_${indice}`] = { type: "string" };
 }
+
+const PARTIDAS = {
+  name: "items",
+  component: "input-hidden",
+  label: "Partidas",
+  column_span: "full",
+  help: "Al elegir una plantilla se crean sus partidas. En cada una puedes cambiar las opciones y el resultado.",
+  partidas: "bitacora",
+} as FeatureShellFieldDescriptor;
 
 function aplicar(patch: DomainRow, base?: DomainRow): DomainRow {
   const next = { ...patch };
@@ -72,6 +57,32 @@ function aplicar(patch: DomainRow, base?: DomainRow): DomainRow {
   // La casilla no manda: sin el trazo de quien revisa no queda revisada.
   next.revisada = bitacora_revisada(firma);
   return next;
+}
+
+function sin_partidas(row: DomainRow): boolean {
+  return !("items" in row) || row.items == null || (Array.isArray(row.items) && row.items.length === 0);
+}
+
+function plantilla_distinta(patch: DomainRow, existing: DomainRow): boolean {
+  if (!("plantilla_id" in patch)) return false;
+  const siguiente = String(patch.plantilla_id ?? "").trim();
+  if (!siguiente) return false;
+  return siguiente !== String(existing.plantilla_id ?? "");
+}
+
+async function aplicar_plantilla(ctx: KirletCtx, row: DomainRow): Promise<void> {
+  const id = String(row.plantilla_id ?? "").trim();
+  if (!id) return;
+  const plantilla = await ctx.data.findOne("plantilla_revision", { id });
+  if (!sin_partidas(row)) {
+    if (plantilla) row.plantilla_nombre = String(plantilla.name ?? "");
+    return;
+  }
+  if (!plantilla) throw new KirletHttpError(400, "validation_error", "la plantilla no existe");
+  const items = bitacora_desde_plantilla(plantilla.items);
+  if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
+  row.items = items;
+  row.plantilla_nombre = String(plantilla.name ?? "");
 }
 
 export const bitacora_module = definir_recurso({
@@ -121,7 +132,7 @@ export const bitacora_module = definir_recurso({
     },
     { name: "fecha", component: "input-date", label: "Fecha" },
     { name: "description", component: "input-textarea", label: "Observaciones" },
-    ...RANURAS_FORM,
+    PARTIDAS,
     {
       name: "imagenes",
       component: "input-image",
@@ -160,7 +171,8 @@ export const bitacora_module = definir_recurso({
     "GET /bitacora/:id": async (ctx) => {
       const row = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!row || row.is_active === false) return ctx.not_found();
-      return { data: { ...row, ...presentar_ranuras(row.items) } };
+      const items = normalizar_items(row.items);
+      return { data: { ...row, items: es_error(items) ? row.items : items } };
     },
     "POST /bitacora/:id/reportar-falla": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
@@ -207,40 +219,23 @@ export const bitacora_module = definir_recurso({
         if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
         row.items = items;
       }
-      const sin_items = row.items == null || (Array.isArray(row.items) && row.items.length === 0);
-      if (row.plantilla_id && sin_items) {
-        const plantilla = await ctx.data.findOne("plantilla_revision", {
-          id: String(row.plantilla_id),
-        });
-        if (!plantilla) throw new KirletHttpError(400, "validation_error", "la plantilla no existe");
-        const conceptos = Array.isArray(plantilla.items) ? plantilla.items : [];
-        row.items = conceptos.map((item) => ({
-          concepto: String(
-            item && typeof item === "object"
-              ? (item as Record<string, unknown>).concepto ?? ""
-              : item,
-          ),
-          resultado: "na",
-        }));
-        row.plantilla_nombre = String(plantilla.name ?? "");
-      } else if (row.plantilla_id) {
-        const plantilla = await ctx.data.findOne("plantilla_revision", {
-          id: String(row.plantilla_id),
-        });
-        if (plantilla) row.plantilla_nombre = String(plantilla.name ?? "");
-      }
+      if (row.plantilla_id) await aplicar_plantilla(ctx, row);
       if (row.items == null) row.items = [];
       if (row.imagenes == null) row.imagenes = [];
       return aplicar(row);
     },
-    before_update(_ctx, _id, patch, existing) {
+    async before_update(ctx, _id, patch, existing) {
       const capturadas = filas_desde_ranuras(patch, existing.items);
       quitar_ranuras(patch);
       if (capturadas) {
         const items = normalizar_items(capturadas);
         if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
         const previos = Array.isArray(existing.items) ? existing.items : [];
-        patch.items = [...items, ...previos.slice(RANURAS_REVISION)];
+        const cola = normalizar_items(previos.slice(RANURAS_REVISION));
+        if (es_error(cola)) throw new KirletHttpError(400, "validation_error", cola.error);
+        patch.items = [...items, ...cola];
+      } else if (plantilla_distinta(patch, existing)) {
+        await aplicar_plantilla(ctx, patch);
       }
       return aplicar(patch, existing);
     },

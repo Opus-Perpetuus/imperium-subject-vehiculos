@@ -1,10 +1,26 @@
 // Cálculo de flota, sin HTTP: revisión, vencimiento y siguiente servicio.
 
-export type ResultadoRevision = "pasa" | "falla" | "na";
+export type OpcionPartida = {
+  value: string;
+  label: string;
+};
 
-export type ItemRevision = {
+export const OPCIONES_REVISION: OpcionPartida[] = [
+  { value: "pasa", label: "Pasa" },
+  { value: "falla", label: "Falla" },
+  { value: "na", label: "No aplica" },
+];
+
+export const DEFECTO_REVISION = "na";
+
+export type PartidaPlantilla = {
   concepto: string;
-  resultado: ResultadoRevision;
+  opciones: OpcionPartida[];
+  opcion_defecto: string;
+};
+
+export type PartidaRevision = PartidaPlantilla & {
+  resultado: string;
   nota?: string;
 };
 
@@ -34,8 +50,6 @@ export type Aviso = {
   proxima_lectura: number | null;
   lectura_actual: number | null;
 };
-
-const RESULTADOS = new Set<string>(["pasa", "falla", "na"]);
 
 export function es_error(value: unknown): value is ErrorNorm {
   return (
@@ -100,20 +114,69 @@ export function pide_cumplir(value: unknown): boolean {
   return text === "cumplido" || text === "cerrado" || text === "cerrada";
 }
 
-export function normalizar_items(value: unknown): ItemRevision[] | ErrorNorm {
+function clonar_opciones(opciones: readonly OpcionPartida[]): OpcionPartida[] {
+  return opciones.map((opcion) => ({ value: opcion.value, label: opcion.label }));
+}
+
+function encajar_opcion(valor: string, opciones: readonly OpcionPartida[]): string | null {
+  if (opciones.some((opcion) => opcion.value === valor)) return valor;
+  const minusculas = valor.toLowerCase();
+  if (opciones.some((opcion) => opcion.value === minusculas)) return minusculas;
+  return null;
+}
+
+function leer_opciones(
+  row: Record<string, unknown>,
+): { opciones: OpcionPartida[]; opcion_defecto: string } | ErrorNorm {
+  let opciones: OpcionPartida[];
+  if (!("opciones" in row) || row.opciones == null) {
+    opciones = clonar_opciones(OPCIONES_REVISION);
+  } else if (!Array.isArray(row.opciones) || row.opciones.length === 0) {
+    return { error: "cada partida necesita al menos una opción" };
+  } else {
+    opciones = [];
+    const vistos = new Set<string>();
+    for (const cruda of row.opciones) {
+      if (!cruda || typeof cruda !== "object") return { error: "opción de partida inválida" };
+      const opcion = cruda as Record<string, unknown>;
+      const value = String(opcion.value ?? "").trim();
+      const label = String(opcion.label ?? "").trim();
+      if (!value || !label) return { error: "cada opción necesita valor y etiqueta" };
+      if (vistos.has(value)) return { error: "las opciones de una partida no se repiten" };
+      vistos.add(value);
+      opciones.push({ value, label });
+    }
+  }
+  const pedido = String(row.opcion_defecto ?? "").trim();
+  const opcion_defecto = pedido
+    ? encajar_opcion(pedido, opciones)
+    : opciones.some((opcion) => opcion.value === DEFECTO_REVISION)
+      ? DEFECTO_REVISION
+      : opciones[0].value;
+  if (!opcion_defecto) return { error: "la opción por defecto no está entre las opciones de la partida" };
+  return { opciones, opcion_defecto };
+}
+
+export function normalizar_items(value: unknown): PartidaRevision[] | ErrorNorm {
   if (value == null || value === "") return [];
   if (!Array.isArray(value)) return { error: "los ítems de revisión deben ser una lista" };
-  const items: ItemRevision[] = [];
+  const items: PartidaRevision[] = [];
   for (const raw of value) {
     if (!raw || typeof raw !== "object") return { error: "ítem de revisión inválido" };
     const row = raw as Record<string, unknown>;
     const concepto = String(row.concepto ?? "").trim();
-    const resultado = String(row.resultado ?? "").trim().toLowerCase();
     if (!concepto) return { error: "cada ítem necesita un concepto" };
-    if (!RESULTADOS.has(resultado)) {
-      return { error: "el resultado de cada ítem es pasa, falla o na" };
-    }
-    const item: ItemRevision = { concepto, resultado: resultado as ResultadoRevision };
+    const leidas = leer_opciones(row);
+    if (es_error(leidas)) return leidas;
+    const pedido = String(row.resultado ?? "").trim();
+    const resultado = encajar_opcion(pedido || leidas.opcion_defecto, leidas.opciones);
+    if (!resultado) return { error: "el resultado no está entre las opciones de la partida" };
+    const item: PartidaRevision = {
+      concepto,
+      opciones: leidas.opciones,
+      opcion_defecto: leidas.opcion_defecto,
+      resultado,
+    };
     const nota = String(row.nota ?? "").trim();
     if (nota) item.nota = nota;
     items.push(item);
@@ -121,14 +184,8 @@ export function normalizar_items(value: unknown): ItemRevision[] | ErrorNorm {
   return items;
 }
 
-/** El feature-shell no repite campos. Lo que no cabe en estos renglones sigue en `items`. */
+/** Tope de un cuerpo viejo que todavía manda ranuras `concepto_N`. `items` no se corta. */
 export const RANURAS_REVISION = 30;
-
-export const RESULTADO_OPCIONES: Array<{ value: ResultadoRevision; label: string }> = [
-  { value: "pasa", label: "Pasa" },
-  { value: "falla", label: "Falla" },
-  { value: "na", label: "No aplica" },
-];
 
 export function clave_concepto(indice: number): string {
   return `concepto_${indice}`;
@@ -136,21 +193,6 @@ export function clave_concepto(indice: number): string {
 
 export function clave_resultado(indice: number): string {
   return `resultado_${indice}`;
-}
-
-/**
- * Texto de una línea por concepto, o la lista que ya guardan las plantillas.
- * Una línea vacía no cuenta.
- */
-export function conceptos_capturados(value: unknown): Array<{ concepto: string }> | ErrorNorm {
-  if (typeof value === "string") {
-    const lineas = value
-      .split(/\r?\n/)
-      .map((linea) => linea.trim())
-      .filter(Boolean);
-    return normalizar_plantilla(lineas);
-  }
-  return normalizar_plantilla(value);
 }
 
 export function texto_de_conceptos(value: unknown): string {
@@ -188,10 +230,10 @@ export function etiqueta_vehiculo(row: {
 export function filas_desde_ranuras(
   row: Record<string, unknown>,
   previos?: unknown,
-): ItemRevision[] | null {
+): PartidaRevision[] | null {
   const anteriores = Array.isArray(previos) ? previos : [];
   let vio = false;
-  const items: ItemRevision[] = [];
+  const items: PartidaRevision[] = [];
   for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
     const concepto_key = clave_concepto(indice);
     const resultado_key = clave_resultado(indice);
@@ -199,9 +241,14 @@ export function filas_desde_ranuras(
     if (concepto_key in row || resultado_key in row || nota_key in row) vio = true;
     const concepto = String(row[concepto_key] ?? "").trim();
     if (!concepto) continue;
-    const crudo = String(row[resultado_key] ?? "").trim().toLowerCase();
-    const resultado = RESULTADOS.has(crudo) ? (crudo as ResultadoRevision) : "na";
-    const item: ItemRevision = { concepto, resultado };
+    const crudo = String(row[resultado_key] ?? "").trim();
+    const resultado = encajar_opcion(crudo, OPCIONES_REVISION) ?? DEFECTO_REVISION;
+    const item: PartidaRevision = {
+      concepto,
+      opciones: clonar_opciones(OPCIONES_REVISION),
+      opcion_defecto: DEFECTO_REVISION,
+      resultado,
+    };
     const anterior = anteriores[indice - 1];
     const nota_previa =
       anterior && typeof anterior === "object"
@@ -215,19 +262,6 @@ export function filas_desde_ranuras(
   return items;
 }
 
-export function presentar_ranuras(value: unknown): Record<string, string> {
-  const list = Array.isArray(value) ? value : [];
-  const out: Record<string, string> = {};
-  for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
-    const raw = list[indice - 1];
-    const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-    out[clave_concepto(indice)] = String(row.concepto ?? "");
-    out[clave_resultado(indice)] = String(row.resultado ?? "");
-    out[`nota_${indice}`] = String(row.nota ?? "");
-  }
-  return out;
-}
-
 export function quitar_ranuras(row: Record<string, unknown>): void {
   for (let indice = 1; indice <= RANURAS_REVISION; indice++) {
     delete row[clave_concepto(indice)];
@@ -236,22 +270,43 @@ export function quitar_ranuras(row: Record<string, unknown>): void {
   }
 }
 
-export function normalizar_plantilla(value: unknown): Array<{ concepto: string }> | ErrorNorm {
+export function normalizar_plantilla(value: unknown): PartidaPlantilla[] | ErrorNorm {
   if (value == null || value === "") return [];
-  if (typeof value === "string") return conceptos_capturados(value);
+  if (typeof value === "string") {
+    const lineas = value
+      .split(/\r?\n/)
+      .map((linea) => linea.trim())
+      .filter(Boolean);
+    return normalizar_plantilla(lineas);
+  }
   if (!Array.isArray(value)) return { error: "la plantilla debe ser una lista de conceptos" };
-  const items: Array<{ concepto: string }> = [];
+  const items: PartidaPlantilla[] = [];
   for (const raw of value) {
-    const concepto =
-      typeof raw === "string"
-        ? raw.trim()
-        : raw && typeof raw === "object"
-          ? String((raw as Record<string, unknown>).concepto ?? "").trim()
-          : "";
+    if (typeof raw === "string") {
+      const concepto = raw.trim();
+      if (!concepto) return { error: "cada concepto de la plantilla necesita texto" };
+      items.push({
+        concepto,
+        opciones: clonar_opciones(OPCIONES_REVISION),
+        opcion_defecto: DEFECTO_REVISION,
+      });
+      continue;
+    }
+    if (!raw || typeof raw !== "object") return { error: "cada concepto de la plantilla necesita texto" };
+    const row = raw as Record<string, unknown>;
+    const concepto = String(row.concepto ?? "").trim();
     if (!concepto) return { error: "cada concepto de la plantilla necesita texto" };
-    items.push({ concepto });
+    const leidas = leer_opciones(row);
+    if (es_error(leidas)) return leidas;
+    items.push({ concepto, opciones: leidas.opciones, opcion_defecto: leidas.opcion_defecto });
   }
   return items;
+}
+
+export function bitacora_desde_plantilla(value: unknown): PartidaRevision[] | ErrorNorm {
+  const plantilla = normalizar_plantilla(value);
+  if (es_error(plantilla)) return plantilla;
+  return plantilla.map((partida) => ({ ...partida, resultado: partida.opcion_defecto }));
 }
 
 export function normalizar_imagenes(value: unknown): string[] | ErrorNorm {

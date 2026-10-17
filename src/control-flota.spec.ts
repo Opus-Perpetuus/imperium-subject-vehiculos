@@ -36,11 +36,28 @@ async function api(server: Server, method: string, path: string, body?: unknown)
   return { status: response.status, json };
 }
 
+const OPCIONES_BASE = [
+  { value: "pasa", label: "Pasa" },
+  { value: "falla", label: "Falla" },
+  { value: "na", label: "No aplica" },
+];
+
+function partida_base(concepto: string, resultado = "na", nota?: string) {
+  return {
+    concepto,
+    opciones: OPCIONES_BASE,
+    opcion_defecto: "na",
+    resultado,
+    ...(nota ? { nota } : {}),
+  };
+}
+
 type Campo = {
   name?: string;
   component?: string;
   label?: string;
   help?: string;
+  partidas?: string;
   optionsSource?: string;
   options?: Array<{ value?: string; label?: string }>;
 };
@@ -329,8 +346,8 @@ describe("subject de vehículos", () => {
         plantilla_id: plantilla.json.data.id,
       });
       expect(desde_plantilla.json.data.items).toEqual([
-        { concepto: "Luces", resultado: "na" },
-        { concepto: "Llantas", resultado: "na" },
+        partida_base("Luces"),
+        partida_base("Llantas"),
       ]);
 
       const lectura = await api(server, "POST", "/lectura-uso", {
@@ -621,15 +638,22 @@ describe("subject de vehículos", () => {
     }
   });
 
-  test("plantilla y bitácora no piden JSON y guardan conceptos con botones pasa, falla y no aplica", async () => {
+  test("plantilla y bitácora no piden JSON ni ranuras y arman partidas con opciones", async () => {
     const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
     try {
+      const serie = /^(concepto|resultado|nota)_\d+$/;
       for (const id of ["vehiculos.plantilla-revision", "vehiculos.bitacora"]) {
         const pagina = await api(server, "GET", `/pages/${id}`);
         expect(pagina.status).toBe(200);
         const campos = campos_de(pagina.json);
+        const nombres = campos.map((campo) => campo.name);
+        console.log("descriptor", id, nombres);
+        expect(campos.some((campo) => serie.test(String(campo.name ?? "")))).toBe(false);
         expect(campos.some((campo) => campo.component === "input-json" || campo.component === "input-code-editor")).toBe(
           false,
+        );
+        expect(campos.find((campo) => campo.name === "items")?.partidas).toBe(
+          id === "vehiculos.bitacora" ? "bitacora" : "plantilla",
         );
         for (const campo of campos) {
           expect(String(campo.help ?? "")).not.toContain("{");
@@ -637,57 +661,99 @@ describe("subject de vehículos", () => {
         }
       }
 
-      const plantilla_pagina = await api(server, "GET", "/pages/vehiculos.plantilla-revision");
-      expect(campos_de(plantilla_pagina.json).find((campo) => campo.name === "conceptos")).toMatchObject({
-        component: "input-textarea",
-        label: "Conceptos",
-      });
-
-      const bitacora_pagina = await api(server, "GET", "/pages/vehiculos.bitacora");
-      const resultado = campos_de(bitacora_pagina.json).find((campo) => campo.name === "resultado_1");
-      expect(resultado?.component).toBe("input-radio-buttons");
-      expect(resultado?.options?.map((opcion) => opcion.label)).toEqual(["Pasa", "Falla", "No aplica"]);
-      expect(resultado?.options?.map((opcion) => opcion.value)).toEqual(["pasa", "falla", "na"]);
-
-      const plantilla = await api(server, "POST", "/plantilla-revision", {
+      const textos = await api(server, "POST", "/plantilla-revision", {
         name: "Salida",
         conceptos: "Frenos\nLlantas",
       });
+      expect(textos.status).toBe(201);
+      expect(textos.json.data.items).toEqual([
+        { concepto: "Frenos", opciones: OPCIONES_BASE, opcion_defecto: "na" },
+        { concepto: "Llantas", opciones: OPCIONES_BASE, opcion_defecto: "na" },
+      ]);
+      console.log("plantilla solo textos", textos.json.data.items[0]);
+
+      const opciones = [
+        { value: "alta", label: "Alta" },
+        { value: "baja", label: "Baja" },
+      ];
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "Presión",
+        items: [{ concepto: "Presión de aire", opciones, opcion_defecto: "alta" }],
+      });
       expect(plantilla.status).toBe(201);
-      expect(plantilla.json.data.items).toEqual([{ concepto: "Frenos" }, { concepto: "Llantas" }]);
+      expect(plantilla.json.data.items).toEqual([
+        { concepto: "Presión de aire", opciones, opcion_defecto: "alta" },
+      ]);
+      console.log("plantilla con opciones", plantilla.json.data.items[0]);
 
       const unidad = await api(server, "POST", "/vehicle", {
         name: "Unidad patio",
         placas: "PAD-01",
       });
-      const por_botones = await api(server, "POST", "/bitacora", {
-        name: "Revisión de patio",
+      const copiada = await api(server, "POST", "/bitacora", {
+        name: "Desde plantilla",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+      });
+      expect(copiada.status).toBe(201);
+      expect(copiada.json.data.items).toEqual([
+        { concepto: "Presión de aire", opciones, opcion_defecto: "alta", resultado: "alta" },
+      ]);
+      console.log("bitácora solo con plantilla", copiada.json.data.items[0]);
+
+      const propias = await api(server, "POST", "/bitacora", {
+        name: "Con partidas propias",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+        items: [{ concepto: "Propia", resultado: "pasa" }],
+      });
+      expect(propias.json.data.items).toEqual([partida_base("Propia", "pasa")]);
+
+      const por_ranuras = await api(server, "POST", "/bitacora", {
+        name: "Cuerpo viejo",
         vehicle_id: unidad.json.data.id,
         concepto_1: "Frenos",
         resultado_1: "pasa",
         concepto_2: "Luces",
         resultado_2: "falla",
       });
-      expect(por_botones.status).toBe(201);
-      expect(por_botones.json.data.items).toEqual([
-        { concepto: "Frenos", resultado: "pasa" },
-        { concepto: "Luces", resultado: "falla" },
+      expect(por_ranuras.status).toBe(201);
+      expect(por_ranuras.json.data.items).toEqual([
+        partida_base("Frenos", "pasa"),
+        partida_base("Luces", "falla"),
       ]);
-      const leida = await api(server, "GET", `/bitacora/${por_botones.json.data.id}`);
-      expect(leida.json.data.concepto_1).toBe("Frenos");
-      expect(leida.json.data.resultado_1).toBe("pasa");
-      expect(leida.json.data.concepto_2).toBe("Luces");
-      expect(leida.json.data.resultado_2).toBe("falla");
+      const leida = await api(server, "GET", `/bitacora/${por_ranuras.json.data.id}`);
+      expect(leida.json.data.concepto_1).toBeUndefined();
+      expect(leida.json.data.items[0].concepto).toBe("Frenos");
 
-      const copiada = await api(server, "POST", "/bitacora", {
-        name: "Desde plantilla",
+      const vieja = await api(server, "POST", "/bitacora", {
+        name: "Partida vieja",
         vehicle_id: unidad.json.data.id,
-        plantilla_id: plantilla.json.data.id,
+        items: [{ concepto: "Frenos", resultado: "falla", nota: "Bajo el cárter" }],
       });
-      expect(copiada.json.data.items).toEqual([
-        { concepto: "Frenos", resultado: "na" },
-        { concepto: "Llantas", resultado: "na" },
+      expect(vieja.status).toBe(201);
+      expect(vieja.json.data.items).toEqual([partida_base("Frenos", "falla", "Bajo el cárter")]);
+      console.log("partida vieja", vieja.json.data.items[0]);
+
+      const fuera = await api(server, "POST", "/bitacora", {
+        name: "Resultado ajeno",
+        vehicle_id: unidad.json.data.id,
+        items: [{ concepto: "Presión de aire", opciones, opcion_defecto: "alta", resultado: "media" }],
+      });
+      expect(fuera.status).toBe(400);
+      console.log("resultado fuera de opciones", fuera.status, fuera.json?.error ?? fuera.json?.message);
+
+      const cambiada = await api(server, "PATCH", `/bitacora/${copiada.json.data.id}`, {
+        plantilla_id: textos.json.data.id,
+      });
+      expect(cambiada.json.data.items).toEqual([
+        partida_base("Frenos"),
+        partida_base("Llantas"),
       ]);
+      const titulo = await api(server, "PATCH", `/bitacora/${copiada.json.data.id}`, {
+        name: "Sigue igual",
+      });
+      expect(titulo.json.data.items).toEqual(cambiada.json.data.items);
     } finally {
       server.stop();
     }
@@ -846,68 +912,37 @@ describe("subject de vehículos", () => {
     }
   });
 
-  test("una bitácora de 13 conceptos muestra el último y no pierde la nota", async () => {
+  test("una bitácora de 40 partidas guarda la nota de la última", async () => {
     const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
     try {
-      const conceptos = Array.from({ length: 13 }, (_, indice) => `Punto ${indice + 1}`).join("\n");
-      const plantilla = await api(server, "POST", "/plantilla-revision", {
-        name: "Lista larga",
-        conceptos,
-      });
-      expect(plantilla.json.data.items).toHaveLength(13);
       const unidad = await api(server, "POST", "/vehicle", {
         name: "Unidad larga",
-        placas: "LNG-13",
+        placas: "LNG-40",
       });
+      const items = Array.from({ length: 40 }, (_, indice) =>
+        indice === 39
+          ? { concepto: "Punto 40", resultado: "falla", nota: "Nota de la última" }
+          : { concepto: `Punto ${indice + 1}`, resultado: "na" },
+      );
       const creada = await api(server, "POST", "/bitacora", {
         name: "Revisión larga",
         vehicle_id: unidad.json.data.id,
-        plantilla_id: plantilla.json.data.id,
+        items,
       });
-      expect(creada.json.data.items).toHaveLength(13);
-      expect(creada.json.data.items[12]).toEqual({ concepto: "Punto 13", resultado: "na" });
+      expect(creada.status).toBe(201);
+      expect(creada.json.data.items).toHaveLength(40);
+      expect(creada.json.data.items[39]).toEqual(partida_base("Punto 40", "falla", "Nota de la última"));
+      const leida = await api(server, "GET", `/bitacora/${creada.json.data.id}`);
+      expect(leida.json.data.items).toHaveLength(40);
+      expect(leida.json.data.items[39].nota).toBe("Nota de la última");
+      expect(leida.json.data.items[39].concepto).toBe("Punto 40");
+      console.log("cuarenta partidas", leida.json.data.items.length, leida.json.data.items[39]);
 
       const pagina = await api(server, "GET", "/pages/vehiculos.bitacora");
       const campos = campos_de(pagina.json);
-      expect(campos.find((campo) => campo.name === "concepto_13")?.component).toBe("input-text");
-      const resultado = campos.find((campo) => campo.name === "resultado_13");
-      expect(resultado?.component).toBe("input-radio-buttons");
-      expect(resultado?.options?.map((opcion) => opcion.label)).toEqual(["Pasa", "Falla", "No aplica"]);
-
-      const con_nota = await api(server, "POST", "/bitacora", {
-        name: "Con nota",
-        vehicle_id: unidad.json.data.id,
-        concepto_1: "Frenos",
-        resultado_1: "falla",
-        nota_1: "Bajo el cárter",
-      });
-      expect(con_nota.status).toBe(201);
-      expect(con_nota.json.data.items).toEqual([
-        { concepto: "Frenos", resultado: "falla", nota: "Bajo el cárter" },
-      ]);
-      const leida = await api(server, "GET", `/bitacora/${con_nota.json.data.id}`);
-      expect(leida.json.data.nota_1).toBe("Bajo el cárter");
-      const guardada = await api(server, "PATCH", `/bitacora/${con_nota.json.data.id}`, {
-        concepto_1: "Frenos",
-        resultado_1: "pasa",
-        nota_1: "Bajo el cárter",
-      });
-      expect(guardada.status).toBe(200);
-      expect(guardada.json.data.items).toEqual([
-        { concepto: "Frenos", resultado: "pasa", nota: "Bajo el cárter" },
-      ]);
-
-      const ranuras: Record<string, string> = {};
-      creada.json.data.items.forEach((item: { concepto: string }, indice: number) => {
-        ranuras[`concepto_${indice + 1}`] = item.concepto;
-        ranuras[`resultado_${indice + 1}`] = indice === 12 ? "pasa" : "na";
-      });
-      const marcada = await api(server, "PATCH", `/bitacora/${creada.json.data.id}`, ranuras);
-      expect(marcada.json.data.items).toHaveLength(13);
-      expect(marcada.json.data.items[12]).toEqual({ concepto: "Punto 13", resultado: "pasa" });
-      const otra = await api(server, "GET", `/bitacora/${creada.json.data.id}`);
-      expect(otra.json.data.concepto_13).toBe("Punto 13");
-      expect(otra.json.data.resultado_13).toBe("pasa");
+      expect(campos.some((campo) => /^(concepto|resultado|nota)_\d+$/.test(String(campo.name ?? "")))).toBe(
+        false,
+      );
     } finally {
       server.stop();
     }
