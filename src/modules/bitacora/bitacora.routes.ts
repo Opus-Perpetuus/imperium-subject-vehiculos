@@ -15,11 +15,13 @@ import {
   es_error,
   etiqueta_vehiculo,
   filas_desde_ranuras,
+  llenar_partidas,
   normalizar_imagenes,
   normalizar_items,
   numero,
   quitar_ranuras,
   RANURAS_REVISION,
+  type PartidaRevision,
 } from "../../control.ts";
 import { API, VEHICULO, definir_recurso, define_routes } from "../../recurso.ts";
 
@@ -37,7 +39,7 @@ const PARTIDAS = {
   component: "input-hidden",
   label: "Partidas",
   column_span: "full",
-  help: "Al elegir una plantilla se crean sus partidas. En cada una puedes cambiar las opciones y el resultado.",
+  help: "Al elegir una plantilla se cargan sus partidas. En cada una eliges el resultado y anotas lo que haga falta.",
   partidas: "bitacora",
 } as FeatureShellFieldDescriptor;
 
@@ -59,10 +61,6 @@ function aplicar(patch: DomainRow, base?: DomainRow): DomainRow {
   return next;
 }
 
-function sin_partidas(row: DomainRow): boolean {
-  return !("items" in row) || row.items == null || (Array.isArray(row.items) && row.items.length === 0);
-}
-
 function plantilla_distinta(patch: DomainRow, existing: DomainRow): boolean {
   if (!("plantilla_id" in patch)) return false;
   const siguiente = String(patch.plantilla_id ?? "").trim();
@@ -70,19 +68,30 @@ function plantilla_distinta(patch: DomainRow, existing: DomainRow): boolean {
   return siguiente !== String(existing.plantilla_id ?? "");
 }
 
-async function aplicar_plantilla(ctx: KirletCtx, row: DomainRow): Promise<void> {
-  const id = String(row.plantilla_id ?? "").trim();
-  if (!id) return;
+async function partidas_de_plantilla(
+  ctx: KirletCtx,
+  id: string,
+): Promise<{ items: PartidaRevision[]; nombre: string }> {
   const plantilla = await ctx.data.findOne("plantilla_revision", { id });
-  if (!sin_partidas(row)) {
-    if (plantilla) row.plantilla_nombre = String(plantilla.name ?? "");
-    return;
-  }
   if (!plantilla) throw new KirletHttpError(400, "validation_error", "la plantilla no existe");
   const items = bitacora_desde_plantilla(plantilla.items);
   if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
-  row.items = items;
-  row.plantilla_nombre = String(plantilla.name ?? "");
+  return { items, nombre: String(plantilla.name ?? "") };
+}
+
+function llenar(definidas: readonly PartidaRevision[], enviadas: unknown): PartidaRevision[] {
+  const items = llenar_partidas(definidas, enviadas);
+  if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
+  return items;
+}
+
+// Las bitácoras ligadas a una plantilla conservan las partidas con que se
+// crearon aunque la plantilla cambie después; las viejas con partidas propias
+// también se llenan sobre lo que ya guardaron.
+async function partidas_guardadas(ctx: KirletCtx, existing: DomainRow, plantilla_id: string) {
+  const guardadas = normalizar_items(existing.items);
+  if (!es_error(guardadas) && guardadas.length > 0) return guardadas;
+  return (await partidas_de_plantilla(ctx, plantilla_id)).items;
 }
 
 export const bitacora_module = definir_recurso({
@@ -214,12 +223,16 @@ export const bitacora_module = definir_recurso({
       const capturadas = filas_desde_ranuras(row);
       quitar_ranuras(row);
       if (!row.fecha) row.fecha = today_iso();
-      if (capturadas) {
+      const plantilla_id = String(row.plantilla_id ?? "").trim();
+      if (plantilla_id) {
+        const plantilla = await partidas_de_plantilla(ctx, plantilla_id);
+        row.items = llenar(plantilla.items, capturadas ?? row.items);
+        row.plantilla_nombre = plantilla.nombre;
+      } else if (capturadas) {
         const items = normalizar_items(capturadas);
         if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
         row.items = items;
       }
-      if (row.plantilla_id) await aplicar_plantilla(ctx, row);
       if (row.items == null) row.items = [];
       if (row.imagenes == null) row.imagenes = [];
       return aplicar(row);
@@ -227,15 +240,27 @@ export const bitacora_module = definir_recurso({
     async before_update(ctx, _id, patch, existing) {
       const capturadas = filas_desde_ranuras(patch, existing.items);
       quitar_ranuras(patch);
+      let enviadas: unknown = patch.items;
+      const hay_partidas = capturadas != null || "items" in patch;
       if (capturadas) {
         const items = normalizar_items(capturadas);
         if (es_error(items)) throw new KirletHttpError(400, "validation_error", items.error);
         const previos = Array.isArray(existing.items) ? existing.items : [];
         const cola = normalizar_items(previos.slice(RANURAS_REVISION));
         if (es_error(cola)) throw new KirletHttpError(400, "validation_error", cola.error);
-        patch.items = [...items, ...cola];
-      } else if (plantilla_distinta(patch, existing)) {
-        await aplicar_plantilla(ctx, patch);
+        enviadas = [...items, ...cola];
+      }
+      const plantilla_id = String(
+        ("plantilla_id" in patch ? patch.plantilla_id : existing.plantilla_id) ?? "",
+      ).trim();
+      if (plantilla_distinta(patch, existing)) {
+        const plantilla = await partidas_de_plantilla(ctx, plantilla_id);
+        patch.items = llenar(plantilla.items, hay_partidas ? enviadas : null);
+        patch.plantilla_nombre = plantilla.nombre;
+      } else if (hay_partidas && plantilla_id) {
+        patch.items = llenar(await partidas_guardadas(ctx, existing, plantilla_id), enviadas);
+      } else if (capturadas) {
+        patch.items = enviadas;
       }
       return aplicar(patch, existing);
     },

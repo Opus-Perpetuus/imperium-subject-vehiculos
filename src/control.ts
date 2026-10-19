@@ -569,3 +569,53 @@ export function armar_recordatorios(input: {
 
   return { data: [...vencidos, ...por_vencer], vencidos, por_vencer };
 }
+
+export const ERROR_PARTIDAS_DE_PLANTILLA =
+  "las partidas de esta bitácora las define su plantilla; solo se llenan resultado y nota";
+
+function mismas_opciones(a: readonly OpcionPartida[], b: readonly OpcionPartida[]): boolean {
+  return a.length === b.length && a.every((opcion, i) => opcion.value === b[i].value && opcion.label === b[i].label);
+}
+
+/**
+ * Llena las partidas ya definidas con lo que mandó la persona. Solo toma
+ * `resultado` y `nota`; si trae otro concepto, otras opciones u otra opción
+ * por defecto, o agrega o quita partidas, se rechaza.
+ */
+export function llenar_partidas(
+  definidas: readonly PartidaRevision[],
+  enviadas: unknown,
+): PartidaRevision[] | ErrorNorm {
+  if (enviadas == null || enviadas === "") return definidas.map((partida) => ({ ...partida }));
+  if (!Array.isArray(enviadas)) return { error: "los ítems de revisión deben ser una lista" };
+  if (enviadas.length !== definidas.length) return { error: ERROR_PARTIDAS_DE_PLANTILLA };
+  const items: PartidaRevision[] = [];
+  for (let i = 0; i < definidas.length; i++) {
+    const base = definidas[i];
+    const raw = enviadas[i];
+    if (!raw || typeof raw !== "object") return { error: "ítem de revisión inválido" };
+    const row = raw as Record<string, unknown>;
+    const concepto = String(row.concepto ?? "").trim();
+    if (concepto && concepto !== base.concepto) return { error: ERROR_PARTIDAS_DE_PLANTILLA };
+    if ("opciones" in row && row.opciones != null) {
+      const leidas = leer_opciones({ opciones: row.opciones });
+      if (es_error(leidas)) return leidas;
+      if (!mismas_opciones(leidas.opciones, base.opciones)) return { error: ERROR_PARTIDAS_DE_PLANTILLA };
+    }
+    const defecto = String(row.opcion_defecto ?? "").trim();
+    if (defecto && defecto !== base.opcion_defecto) return { error: ERROR_PARTIDAS_DE_PLANTILLA };
+    const pedido = String(row.resultado ?? "").trim();
+    const resultado = pedido ? encajar_opcion(pedido, base.opciones) : base.resultado;
+    if (!resultado) return { error: "el resultado no está entre las opciones de la partida" };
+    const item: PartidaRevision = {
+      concepto: base.concepto,
+      opciones: clonar_opciones(base.opciones),
+      opcion_defecto: base.opcion_defecto,
+      resultado,
+    };
+    const nota = "nota" in row ? String(row.nota ?? "").trim() : String(base.nota ?? "").trim();
+    if (nota) item.nota = nota;
+    items.push(item);
+  }
+  return items;
+}
