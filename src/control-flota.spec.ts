@@ -707,7 +707,7 @@ describe("subject de vehículos", () => {
         plantilla_id: plantilla.json.data.id,
         items: [{ concepto: "Propia", resultado: "pasa" }],
       });
-      expect(propias.json.data.items).toEqual([partida_base("Propia", "pasa")]);
+      expect(propias.status).toBe(400);
 
       const por_ranuras = await api(server, "POST", "/bitacora", {
         name: "Cuerpo viejo",
@@ -754,6 +754,167 @@ describe("subject de vehículos", () => {
         name: "Sigue igual",
       });
       expect(titulo.json.data.items).toEqual(cambiada.json.data.items);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("la bitácora con plantilla solo llena resultado y nota de las partidas de la plantilla", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const opciones = [
+        { value: "alta", label: "Alta" },
+        { value: "baja", label: "Baja" },
+      ];
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "Salida",
+        items: [{ concepto: "Frenos" }, { concepto: "Presión", opciones, opcion_defecto: "alta" }],
+      });
+      const unidad = await api(server, "POST", "/vehicle", { name: "Unidad", placas: "PLA-01" });
+      const base = { name: "Revisión", vehicle_id: unidad.json.data.id, plantilla_id: plantilla.json.data.id };
+      const presion = { concepto: "Presión", opciones, opcion_defecto: "alta" };
+
+      const llena = await api(server, "POST", "/bitacora", {
+        ...base,
+        items: [
+          { concepto: "Frenos", resultado: "falla", nota: "Rechinan" },
+          { ...presion, resultado: "baja" },
+        ],
+      });
+      expect(llena.status).toBe(201);
+      expect(llena.json.data.plantilla_nombre).toBe("Salida");
+      expect(llena.json.data.items).toEqual([
+        partida_base("Frenos", "falla", "Rechinan"),
+        { ...presion, resultado: "baja" },
+      ]);
+
+      const solo_resultados = await api(server, "POST", "/bitacora", {
+        ...base,
+        items: [{ resultado: "pasa" }, { resultado: "baja" }],
+      });
+      expect(solo_resultados.status).toBe(201);
+      expect(solo_resultados.json.data.items).toEqual([partida_base("Frenos", "pasa"), { ...presion, resultado: "baja" }]);
+
+      const rechazos: Array<[string, unknown[]]> = [
+        ["partida de más", [{ concepto: "Frenos" }, presion, { concepto: "Extra" }]],
+        ["partida de menos", [{ concepto: "Frenos" }]],
+        ["concepto cambiado", [{ concepto: "Luces" }, presion]],
+        ["opciones cambiadas", [{ concepto: "Frenos" }, { ...presion, opciones: [...opciones, { value: "media", label: "Media" }] }]],
+        ["etiqueta cambiada", [{ concepto: "Frenos" }, { ...presion, opciones: [opciones[0], { value: "baja", label: "Muy baja" }] }]],
+        ["defecto cambiado", [{ concepto: "Frenos" }, { ...presion, opcion_defecto: "baja" }]],
+        ["resultado ajeno", [{ concepto: "Frenos" }, { ...presion, resultado: "media" }]],
+      ];
+      for (const [caso, items] of rechazos) {
+        const alta = await api(server, "POST", "/bitacora", { ...base, items });
+        expect([caso, alta.status]).toEqual([caso, 400]);
+      }
+      const por_ranuras = await api(server, "POST", "/bitacora", {
+        ...base,
+        concepto_1: "Inventada",
+        resultado_1: "pasa",
+      });
+      expect(por_ranuras.status).toBe(400);
+
+      const id = llena.json.data.id as string;
+      const resultado = await api(server, "PATCH", `/bitacora/${id}`, {
+        items: [{ resultado: "pasa" }, { resultado: "alta", nota: "Ajustada" }],
+      });
+      expect(resultado.status).toBe(200);
+      expect(resultado.json.data.items).toEqual([
+        partida_base("Frenos", "pasa", "Rechinan"),
+        { ...presion, resultado: "alta", nota: "Ajustada" },
+      ]);
+      const agrega = await api(server, "PATCH", `/bitacora/${id}`, {
+        items: [...resultado.json.data.items, { concepto: "Extra" }],
+      });
+      expect(agrega.status).toBe(400);
+      const quita = await api(server, "PATCH", `/bitacora/${id}`, { items: [] });
+      expect(quita.status).toBe(400);
+      const renombra = await api(server, "PATCH", `/bitacora/${id}`, {
+        items: [{ concepto: "Otra" }, presion],
+      });
+      expect(renombra.status).toBe(400);
+      const leida = await api(server, "GET", `/bitacora/${id}`);
+      expect(leida.json.data.items).toEqual(resultado.json.data.items);
+
+      await api(server, "PATCH", `/plantilla-revision/${plantilla.json.data.id}`, {
+        items: [{ concepto: "Frenos" }, presion, { concepto: "Luces" }],
+      });
+      const tras_cambio = await api(server, "PATCH", `/bitacora/${id}`, {
+        items: [{ resultado: "falla" }, { resultado: "baja" }],
+      });
+      expect(tras_cambio.status).toBe(200);
+      expect(tras_cambio.json.data.items.map((item: { concepto: string }) => item.concepto)).toEqual([
+        "Frenos",
+        "Presión",
+      ]);
+
+      const otra = await api(server, "POST", "/plantilla-revision", { name: "Llegada", conceptos: "Llantas" });
+      const cambia = await api(server, "PATCH", `/bitacora/${id}`, {
+        plantilla_id: otra.json.data.id,
+        items: [{ concepto: "Frenos" }, presion],
+      });
+      expect(cambia.status).toBe(400);
+      const cambia_bien = await api(server, "PATCH", `/bitacora/${id}`, {
+        plantilla_id: otra.json.data.id,
+        items: [{ resultado: "pasa" }],
+      });
+      expect(cambia_bien.status).toBe(200);
+      expect(cambia_bien.json.data.plantilla_nombre).toBe("Llegada");
+      expect(cambia_bien.json.data.items).toEqual([partida_base("Llantas", "pasa")]);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("las bitácoras viejas con partidas propias siguen abriendo y se llenan sobre lo guardado", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const plantilla = await api(server, "POST", "/plantilla-revision", { name: "Salida", conceptos: "Frenos" });
+      const unidad = await api(server, "POST", "/vehicle", { name: "Unidad", placas: "VIE-01" });
+      const ts = new Date().toISOString();
+      await server.data.insert("bitacora", {
+        id: "bitacora-vieja",
+        name: "De antes",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+        plantilla_nombre: "Salida",
+        fecha: today_iso(),
+        items: [{ concepto: "Propia", resultado: "pasa" }],
+        imagenes: [],
+        revisada: false,
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      const leida = await api(server, "GET", "/bitacora/bitacora-vieja");
+      expect(leida.status).toBe(200);
+      expect(leida.json.data.items).toEqual([partida_base("Propia", "pasa")]);
+
+      const llenada = await api(server, "PATCH", "/bitacora/bitacora-vieja", {
+        items: [{ concepto: "Propia", resultado: "falla", nota: "Revisar" }],
+      });
+      expect(llenada.status).toBe(200);
+      expect(llenada.json.data.items).toEqual([partida_base("Propia", "falla", "Revisar")]);
+      const redefinida = await api(server, "PATCH", "/bitacora/bitacora-vieja", {
+        items: [{ concepto: "Frenos" }],
+      });
+      expect(redefinida.status).toBe(400);
+      const titulo = await api(server, "PATCH", "/bitacora/bitacora-vieja", { name: "Renombrada" });
+      expect(titulo.status).toBe(200);
+      expect(titulo.json.data.items).toEqual(llenada.json.data.items);
+
+      const libre = await api(server, "POST", "/bitacora", {
+        name: "Sin plantilla",
+        vehicle_id: unidad.json.data.id,
+        items: [{ concepto: "Libre", resultado: "pasa" }],
+      });
+      expect(libre.status).toBe(201);
+      const libre_editada = await api(server, "PATCH", `/bitacora/${libre.json.data.id}`, {
+        items: [{ concepto: "Libre" }, { concepto: "Otra", resultado: "falla" }],
+      });
+      expect(libre_editada.status).toBe(200);
+      expect(libre_editada.json.data.items).toHaveLength(2);
     } finally {
       server.stop();
     }
