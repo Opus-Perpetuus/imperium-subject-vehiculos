@@ -674,3 +674,28 @@ export function llenar_partidas(
   }
   return items;
 }
+
+/**
+ * Conceptos de partidas con resultado «falla» que aún no tienen una falla
+ * abierta de la misma bitácora. Sin repetir conceptos.
+ */
+export function partidas_sin_reporte(
+  items: ReadonlyArray<Record<string, unknown>>,
+  fallas: ReadonlyArray<Record<string, unknown>>,
+): string[] {
+  const clave = (value: unknown) => String(value ?? "").trim().toLowerCase();
+  const reportadas = new Set(
+    fallas
+      .filter((falla) => falla.is_active !== false && estado_abierto(falla.estado) === "abierto")
+      .map((falla) => clave(falla.concepto)),
+  );
+  const pendientes: string[] = [];
+  for (const item of items) {
+    if (item.resultado !== "falla") continue;
+    const concepto = String(item.concepto ?? "").trim();
+    if (!concepto || reportadas.has(clave(concepto))) continue;
+    reportadas.add(clave(concepto));
+    pendientes.push(concepto);
+  }
+  return pendientes;
+}

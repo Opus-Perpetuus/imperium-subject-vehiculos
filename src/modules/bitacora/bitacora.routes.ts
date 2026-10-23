@@ -19,6 +19,7 @@ import {
   normalizar_imagenes,
   normalizar_items,
   numero,
+  partidas_sin_reporte,
   quitar_ranuras,
   RANURAS_REVISION,
   type PartidaRevision,
@@ -164,7 +165,7 @@ export const bitacora_module = definir_recurso({
     {
       id: "reportar-falla",
       label: "Reportar falla",
-      confirm: "Se abre un reporte de falla de este mismo vehículo.",
+      confirm: "Se abre un reporte de falla por cada partida marcada con falla que aún no lo tenga.",
       method: "POST",
       action: `${API}/bitacora/:id/reportar-falla`,
     },
@@ -190,31 +191,55 @@ export const bitacora_module = definir_recurso({
       const items = Array.isArray(bitacora.items)
         ? (bitacora.items as Array<Record<string, unknown>>)
         : [];
+      const unidad = await ctx.data.findOne("vehicle", {
+        id: String(bitacora.vehicle_id ?? ""),
+      });
+      const abrir = (concepto: string, descripcion: string, name: string) => {
+        const ts = now_iso();
+        return ctx.data.insert("falla", {
+          id: new_id("falla"),
+          name,
+          description: descripcion,
+          vehicle_id: bitacora.vehicle_id,
+          vehiculo: unidad ? etiqueta_vehiculo(unidad) : "",
+          bitacora_id: bitacora.id,
+          concepto,
+          prioridad: String(body.prioridad ?? "media"),
+          estado: "abierto",
+          fecha: today_iso(),
+          is_active: true,
+          created_at: ts,
+          updated_at: ts,
+        });
+      };
       const index = numero(body.item_index);
+      const a_mano = index != null || ["concepto", "descripcion", "description", "name"].some((k) => body[k] != null);
+      if (!a_mano) {
+        // El botón de la pantalla no manda nada: una falla por cada partida
+        // marcada como falla que todavía no tenga reporte abierto.
+        const previas = await ctx.data.findMany("falla", { where: { bitacora_id: String(bitacora.id) }, limit: 10000 });
+        const pendientes = partidas_sin_reporte(items, previas);
+        if (pendientes.length) {
+          const fallas = [];
+          for (const concepto of pendientes) {
+            fallas.push(await abrir(concepto, `Falla en revisión: ${concepto}`, concepto));
+          }
+          return ctx.json({ data: fallas[0], fallas, total_elementos: fallas.length }, 201);
+        }
+        if (items.some((item) => item.resultado === "falla")) {
+          return ctx.fail(
+            "conflict",
+            "Las partidas con falla de esta bitácora ya tienen su reporte abierto",
+            409,
+          );
+        }
+      }
       const elegido = index != null ? items[index] : items.find((item) => item.resultado === "falla");
       const concepto = String(body.concepto ?? elegido?.concepto ?? "").trim();
       const descripcion =
         String(body.descripcion ?? body.description ?? "").trim() ||
         (concepto ? `Falla en revisión: ${concepto}` : "Falla anotada en bitácora");
-      const unidad = await ctx.data.findOne("vehicle", {
-        id: String(bitacora.vehicle_id ?? ""),
-      });
-      const ts = now_iso();
-      const created = await ctx.data.insert("falla", {
-        id: new_id("falla"),
-        name: String(body.name ?? (concepto || "Falla de bitácora")),
-        description: descripcion,
-        vehicle_id: bitacora.vehicle_id,
-        vehiculo: unidad ? etiqueta_vehiculo(unidad) : "",
-        bitacora_id: bitacora.id,
-        concepto,
-        prioridad: String(body.prioridad ?? "media"),
-        estado: "abierto",
-        fecha: today_iso(),
-        is_active: true,
-        created_at: ts,
-        updated_at: ts,
-      });
+      const created = await abrir(concepto, descripcion, String(body.name ?? (concepto || "Falla de bitácora")));
       return ctx.created(created);
     },
   }),
