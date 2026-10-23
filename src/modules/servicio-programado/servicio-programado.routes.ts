@@ -14,6 +14,7 @@ import {
   servicio_vista,
   validar_servicio,
 } from "../../control.ts";
+import { paginar, pide_pagina } from "../../listado.ts";
 import { API, VEHICULO, definir_recurso, define_routes, pagina_lista } from "../../recurso.ts";
 
 async function lectura_para_cumplir(
@@ -140,12 +141,12 @@ export const servicio_programado_module = definir_recurso({
       singular: "recordatorio",
       permissionResource: "servicio-programado",
       columns: [
-        { key: "estado", label: "Aviso" },
-        { key: "clase", label: "Clase" },
+        { key: "estado_texto", label: "Aviso" },
         { key: "nombre", label: "Nombre" },
         { key: "vehiculo", label: "Vehículo" },
+        { key: "motivo_texto", label: "Cuándo" },
         { key: "proxima_fecha", label: "Fecha" },
-        { key: "motivo", label: "Motivo" },
+        { key: "clase_texto", label: "Clase" },
       ],
     }),
   ],
@@ -164,10 +165,13 @@ export const servicio_programado_module = definir_recurso({
     "GET /servicio-programado/recordatorios": async (ctx) => {
       const hoy = fecha_iso(ctx.query.get("hoy")) ?? today_iso();
       const [servicios, documentos, vehiculos] = await Promise.all([
-        ctx.data.findMany("servicio_programado", { limit: 500 }),
-        ctx.data.findMany("documento_vehiculo", { limit: 500 }),
-        ctx.data.findMany("vehicle", { limit: 500 }),
+        ctx.data.findMany("servicio_programado", { limit: 10000 }),
+        ctx.data.findMany("documento_vehiculo", { limit: 10000 }),
+        ctx.data.findMany("vehicle", { limit: 10000 }),
       ]);
+      const inactivos = new Set(
+        vehiculos.filter((vehicle) => vehicle.is_active === false).map((vehicle) => String(vehicle.id)),
+      );
       const lecturas: Record<string, { km: number | null; horas: number | null }> = {};
       for (const vehicle of vehiculos) {
         lecturas[String(vehicle.id)] = {
@@ -175,7 +179,7 @@ export const servicio_programado_module = definir_recurso({
           horas: numero(vehicle.lectura_horas),
         };
       }
-      const avisos = armar_recordatorios({ hoy, servicios, documentos, lecturas });
+      const avisos = armar_recordatorios({ hoy, servicios, documentos, lecturas, inactivos });
       const nombres = new Map(
         vehiculos.map((vehicle) => [String(vehicle.id), etiqueta_vehiculo(vehicle)]),
       );
@@ -183,8 +187,13 @@ export const servicio_programado_module = definir_recurso({
         ...fila,
         vehiculo: nombres.get(fila.vehicle_id) ?? fila.vehicle_id,
       });
+      // `data` es la página que pide la lista; vencidos y por_vencer van completos.
+      const filas = avisos.data.map(con_nombre);
+      const pagina = pide_pagina(ctx.query)
+        ? paginar(filas, ctx.list_query())
+        : { data: filas, total_elementos: filas.length };
       return {
-        data: avisos.data.map(con_nombre),
+        ...pagina,
         vencidos: avisos.vencidos.map(con_nombre),
         por_vencer: avisos.por_vencer.map(con_nombre),
       };

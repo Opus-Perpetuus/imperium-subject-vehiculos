@@ -49,6 +49,13 @@ export type Aviso = {
   proxima_fecha: string | null;
   proxima_lectura: number | null;
   lectura_actual: number | null;
+  /** Días hasta la fecha; negativos si ya pasó. `null` si no hay fecha. */
+  dias_restantes: number | null;
+  /** Km u horas que faltan para la meta; negativos si ya se pasó. */
+  faltan_lectura: number | null;
+  estado_texto: string;
+  clase_texto: string;
+  motivo_texto: string;
 };
 
 export function es_error(value: unknown): value is ErrorNorm {
@@ -490,6 +497,28 @@ export function odometro_tras_lecturas(input: {
 
 type Fila = Record<string, unknown>;
 
+export function dias_entre(desde: string, hasta: string): number {
+  const a = Date.parse(`${desde.slice(0, 10)}T00:00:00Z`);
+  const b = Date.parse(`${hasta.slice(0, 10)}T00:00:00Z`);
+  return Math.round((b - a) / 86_400_000);
+}
+
+function plural(n: number, uno: string, varios: string): string {
+  return `${n} ${n === 1 ? uno : varios}`;
+}
+
+function texto_motivo(aviso: Pick<Aviso, "motivo" | "dias_restantes" | "faltan_lectura">, unidad: string): string {
+  if (aviso.motivo === "lectura" && aviso.faltan_lectura != null) {
+    const n = Math.abs(Math.round(aviso.faltan_lectura));
+    return aviso.faltan_lectura <= 0 ? `Se pasó por ${n} ${unidad}` : `Faltan ${n} ${unidad}`;
+  }
+  const dias = aviso.dias_restantes;
+  if (dias == null) return "Por fecha";
+  if (dias < 0) return `Venció hace ${plural(-dias, "día", "días")}`;
+  if (dias === 0) return "Vence hoy";
+  return `Vence en ${plural(dias, "día", "días")}`;
+}
+
 function aviso_de(
   row: Fila,
   clase: Aviso["clase"],
@@ -497,18 +526,36 @@ function aviso_de(
   motivo: "fecha" | "lectura",
   lectura_actual: number | null,
   proxima_fecha: unknown,
+  hoy: string,
 ): Aviso {
-  return {
+  const fecha = fecha_iso(proxima_fecha);
+  const meta = numero(row.proxima_lectura);
+  const base = {
     id: String(row.id ?? ""),
     clase,
     vehicle_id: String(row.vehicle_id ?? ""),
     nombre: String(row.name ?? ""),
     estado,
     motivo,
-    proxima_fecha: fecha_iso(proxima_fecha) ,
-    proxima_lectura: numero(row.proxima_lectura),
+    proxima_fecha: fecha,
+    proxima_lectura: meta,
     lectura_actual,
+    dias_restantes: fecha ? dias_entre(hoy, fecha) : null,
+    faltan_lectura: meta != null && lectura_actual != null ? meta - lectura_actual : null,
   };
+  return {
+    ...base,
+    estado_texto: estado === "vencido" ? "Vencido" : "Por vencer",
+    clase_texto: clase === "servicio" ? "Servicio" : "Documento",
+    motivo_texto: texto_motivo(base, row.tipo_lectura === "horas" ? "horas" : "km"),
+  };
+}
+
+/** Lo más atrasado primero: por días (o lectura) y luego por nombre. */
+function por_urgencia(a: Aviso, b: Aviso): number {
+  const peso = (aviso: Aviso) =>
+    aviso.motivo === "lectura" ? Math.sign(aviso.faltan_lectura ?? 0) : (aviso.dias_restantes ?? 0);
+  return peso(a) - peso(b) || a.nombre.localeCompare(b.nombre, "es");
 }
 
 export function armar_recordatorios(input: {
@@ -516,13 +563,17 @@ export function armar_recordatorios(input: {
   servicios: Fila[];
   documentos: Fila[];
   lecturas: Record<string, { km: number | null; horas: number | null }>;
+  /** Vehículos dados de baja: sus pendientes ya no avisan. */
+  inactivos?: ReadonlySet<string>;
 }): { data: Aviso[]; vencidos: Aviso[]; por_vencer: Aviso[] } {
+  const hoy = fecha_iso(input.hoy) ?? input.hoy.slice(0, 10);
+  const de_baja = (row: Fila) => input.inactivos?.has(String(row.vehicle_id ?? "")) ?? false;
   const vencidos: Aviso[] = [];
   const por_vencer: Aviso[] = [];
   const meter = (id: string) => input.lecturas[id] ?? { km: null, horas: null };
 
   for (const row of input.servicios) {
-    if (row.is_active === false) continue;
+    if (row.is_active === false || de_baja(row)) continue;
     const uso = meter(String(row.vehicle_id ?? ""));
     const clase = clasificar_servicio(servicio_vista(row), {
       hoy: input.hoy,
@@ -541,12 +592,13 @@ export function armar_recordatorios(input: {
           : uso.km
         : null,
       row.proxima_fecha,
+      hoy,
     );
     (clase.estado === "vencido" ? vencidos : por_vencer).push(aviso);
   }
 
   for (const row of input.documentos) {
-    if (row.is_active === false) continue;
+    if (row.is_active === false || de_baja(row)) continue;
     const clase = clasificar_servicio(
       {
         estado: estado_abierto(row.estado) === "cerrado" ? "cumplido" : "programado",
@@ -563,10 +615,13 @@ export function armar_recordatorios(input: {
       "fecha",
       null,
       row.fecha_vencimiento,
+      hoy,
     );
     (clase.estado === "vencido" ? vencidos : por_vencer).push(aviso);
   }
 
+  vencidos.sort(por_urgencia);
+  por_vencer.sort(por_urgencia);
   return { data: [...vencidos, ...por_vencer], vencidos, por_vencer };
 }
 
