@@ -140,6 +140,14 @@ describe("vistas publicadas", () => {
           aviso_dias: 7,
         },
         "lectura-uso": { name: "Lectura de patio", vehicle_id, tipo: "km", valor: 12000 },
+        "carga-combustible": {
+          name: "Ticket 5512",
+          vehicle_id,
+          litros: 40,
+          precio_litro: 24.5,
+          odometro: 12000,
+          tanque_lleno: true,
+        },
         "documento-vehiculo": {
           name: "Seguro anual",
           vehicle_id,

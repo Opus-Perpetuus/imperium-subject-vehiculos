@@ -2,7 +2,7 @@ import { KirletHttpError, now_iso, today_iso, type DomainRow } from "@opus-perpe
 import { fecha_iso, numero, odometro_tras_lecturas } from "../../control.ts";
 import { VEHICULO, definir_recurso } from "../../recurso.ts";
 
-async function sincronizar_odometro(
+export async function sincronizar_odometro(
   ctx: {
     data: {
       findMany: (table: string, opts: { where: { vehicle_id: string; tipo: string }; limit: number }) => Promise<DomainRow[]>;

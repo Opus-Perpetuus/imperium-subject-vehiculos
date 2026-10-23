@@ -1,5 +1,6 @@
 import { define_subject } from "@opus-perpetuus/imperium-core-kit";
 import pkg from "../package.json" with { type: "json" };
+import { carga_combustible_module } from "./modules/carga-combustible/carga-combustible.routes.ts";
 import { bitacora_module } from "./modules/bitacora/bitacora.routes.ts";
 import { documento_vehiculo_module } from "./modules/documento-vehiculo/documento-vehiculo.routes.ts";
 import { falla_module } from "./modules/falla/falla.routes.ts";
@@ -32,6 +33,7 @@ export const SUBJECT = define_subject({
     mantenimiento_preventivo_module,
     servicio_programado_module,
     lectura_uso_module,
+    carga_combustible_module,
     documento_vehiculo_module,
   ],
   seed: seed_demo,

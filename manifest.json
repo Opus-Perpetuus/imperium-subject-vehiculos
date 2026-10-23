@@ -79,6 +79,14 @@
       "label": "Editar Lecturas de uso"
     },
     {
+      "id": "subject.vehiculos.carga-combustible.read",
+      "label": "Ver Cargas de combustible"
+    },
+    {
+      "id": "subject.vehiculos.carga-combustible.write",
+      "label": "Editar Cargas de combustible"
+    },
+    {
       "id": "subject.vehiculos.documento-vehiculo.read",
       "label": "Ver Documentos del vehículo"
     },
@@ -175,6 +183,15 @@
           "icon": "document"
         },
         {
+          "id": "vehiculos.carga-combustible",
+          "label": "Cargas de combustible",
+          "pageId": "vehiculos.carga-combustible",
+          "order": 85,
+          "path": "carga-combustible",
+          "permission": "subject.vehiculos.carga-combustible.read",
+          "icon": "document"
+        },
+        {
           "id": "vehiculos.documento-vehiculo",
           "label": "Documentos del vehículo",
           "pageId": "vehiculos.documento-vehiculo",
@@ -233,6 +250,11 @@
       "permission": "subject.vehiculos.lectura-uso.read"
     },
     {
+      "id": "vehiculos.carga-combustible",
+      "path": "carga-combustible",
+      "permission": "subject.vehiculos.carga-combustible.read"
+    },
+    {
       "id": "vehiculos.documento-vehiculo",
       "path": "documento-vehiculo",
       "permission": "subject.vehiculos.documento-vehiculo.read"
@@ -251,6 +273,7 @@
     "mantenimiento-preventivo": "mantenimiento-preventivo",
     "servicio-programado": "servicio-programado",
     "lectura-uso": "lectura-uso",
+    "carga-combustible": "carga-combustible",
     "documento-vehiculo": "documento-vehiculo"
   }
 }
