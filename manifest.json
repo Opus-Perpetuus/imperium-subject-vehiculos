@@ -111,6 +111,15 @@
           "icon": "fa-bus"
         },
         {
+          "id": "vehiculos.reporte-flota",
+          "label": "Costos por vehículo",
+          "pageId": "vehiculos.reporte-flota",
+          "order": 90,
+          "path": "costos-flota",
+          "permission": "subject.vehiculos.vehicle.read",
+          "icon": "currency"
+        },
+        {
           "id": "vehiculos.plantilla-revision",
           "label": "Plantillas de revisión",
           "pageId": "vehiculos.plantilla-revision",
@@ -207,6 +216,11 @@
     {
       "id": "vehiculos.vehicle",
       "path": "padron-vehiculos",
+      "permission": "subject.vehiculos.vehicle.read"
+    },
+    {
+      "id": "vehiculos.reporte-flota",
+      "path": "costos-flota",
       "permission": "subject.vehiculos.vehicle.read"
     },
     {

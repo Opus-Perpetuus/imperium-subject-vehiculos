@@ -1,6 +1,6 @@
 import { KirletHttpError, now_iso, type DomainRow } from "@opus-perpetuus/imperium-core-kit";
 import { estado_abierto } from "../../control.ts";
-import { API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
+import { costo_valido, API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
 
 async function tomar_vehiculo(ctx: { data: { findOne: (table: string, where: { id: string }) => Promise<DomainRow | null> } }, row: DomainRow) {
   const falla_id = String(row.falla_id ?? "").trim();
@@ -83,6 +83,7 @@ export const mantenimiento_correctivo_module = definir_recurso({
   ],
   hooks: {
     async before_create(ctx, row) {
+      costo_valido(row);
       row.estado = estado_abierto(row.estado);
       if (!row.fecha) row.fecha = new Date().toISOString().slice(0, 10);
       return tomar_vehiculo(ctx, row);
@@ -91,6 +92,7 @@ export const mantenimiento_correctivo_module = definir_recurso({
       await reflejar_en_falla(ctx, row);
     },
     async before_update(ctx, _id, patch, existing) {
+      costo_valido(patch);
       if ("estado" in patch) patch.estado = estado_abierto(patch.estado);
       const merged = { ...existing, ...patch };
       await tomar_vehiculo(ctx, merged);

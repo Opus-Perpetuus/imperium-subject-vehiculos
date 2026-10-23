@@ -1,5 +1,5 @@
 import { estado_abierto } from "../../control.ts";
-import { API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
+import { costo_valido, API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
 
 export const mantenimiento_preventivo_module = definir_recurso({
   resource: "mantenimiento-preventivo",
@@ -47,11 +47,13 @@ export const mantenimiento_preventivo_module = definir_recurso({
   ],
   hooks: {
     before_create(_ctx, row) {
+      costo_valido(row);
       row.estado = estado_abierto(row.estado);
       if (!row.fecha) row.fecha = new Date().toISOString().slice(0, 10);
       return row;
     },
     before_update(_ctx, _id, patch) {
+      costo_valido(patch);
       if ("estado" in patch) patch.estado = estado_abierto(patch.estado);
       return patch;
     },

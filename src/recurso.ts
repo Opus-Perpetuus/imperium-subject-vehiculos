@@ -1,4 +1,5 @@
 import {
+  KirletHttpError,
   build_feature_shell_page,
   define_crud,
   define_module,
@@ -14,7 +15,17 @@ import {
   type KirletPageDecl,
   type KirletRouteTable,
 } from "@opus-perpetuus/imperium-core-kit";
-import { etiqueta_vehiculo } from "./control.ts";
+import { etiqueta_vehiculo, numero } from "./control.ts";
+
+/** Un costo capturado es un número igual o mayor que cero; vacío se queda vacío. */
+export function costo_valido(row: Record<string, unknown>): void {
+  if (!("costo" in row) || row.costo == null || row.costo === "") return;
+  const costo = numero(row.costo);
+  if (costo == null || costo < 0) {
+    throw new KirletHttpError(400, "validation_error", "El costo debe ser un número igual o mayor que cero");
+  }
+  row.costo = costo;
+}
 
 type Cuerpo = { data?: unknown };
 
