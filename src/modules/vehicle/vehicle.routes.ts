@@ -1,8 +1,31 @@
-import { define_crud, define_module, define_routes } from "@opus-perpetuus/imperium-core-kit";
+import {
+  KirletHttpError,
+  define_crud,
+  define_module,
+  define_routes,
+  type DomainRow,
+  type KirletCtx,
+} from "@opus-perpetuus/imperium-core-kit";
 import { etiqueta_vehiculo } from "../../control.ts";
+import { cambios_de_clave, duplicado, limpiar_vehiculo, linea_de_tiempo } from "../../vehiculo.ts";
 import { lectura_con_nombre } from "../../recurso.ts";
 import { vehicle_pages } from "./vehicle.pages.ts";
 import { vehicle_tables } from "./vehicle.tables.ts";
+
+async function validar(
+  ctx: KirletCtx,
+  patch: DomainRow,
+  existing?: DomainRow,
+): Promise<void> {
+  const error = limpiar_vehiculo(patch, new Date().getFullYear());
+  if (error) throw new KirletHttpError(400, "validation_error", error);
+  // El formulario manda todo al guardar: solo cuenta lo que de verdad cambió.
+  const cambios = cambios_de_clave(patch, existing);
+  if (!Object.keys(cambios).length) return;
+  const activos = await ctx.data.findMany("vehicle", { limit: 10000 });
+  const choque = duplicado(cambios, activos, existing ? String(existing.id) : undefined);
+  if (choque) throw new KirletHttpError(409, "conflict", choque.mensaje);
+}
 
 const vehicle_crud = define_crud({
     resource: "vehicle",
@@ -31,6 +54,8 @@ const vehicle_crud = define_crud({
       anio: { type: "number" },
       capacidad_carga_kg: { type: "number" },
       tipo_unidad: { type: "string", search: true },
+      tipo_combustible: { type: "string" },
+      capacidad_tanque_l: { type: "number" },
       estado_operativo: { type: "string", search: true },
       chofer: { type: "string", search: true },
       chofer_nombre: { type: "string", search: true },
@@ -41,11 +66,13 @@ const vehicle_crud = define_crud({
     },
     options_map: { value: "id", label: "etiqueta" },
     hooks: {
-      before_create(_ctx, row) {
+      async before_create(ctx, row) {
+        await validar(ctx, row);
         row.etiqueta = etiqueta_vehiculo(row);
         return row;
       },
-      before_update(_ctx, _id, patch, existing) {
+      async before_update(ctx, id, patch, existing) {
+        await validar(ctx, patch, { ...existing, id });
         patch.etiqueta = etiqueta_vehiculo({ ...existing, ...patch });
         return patch;
       },
@@ -66,18 +93,35 @@ export const vehicle_module = define_module({
         const vehicle = await ctx.data.findOne("vehicle", { id: ctx.params.id });
         if (!vehicle || vehicle.is_active === false) return ctx.not_found();
         const where = { vehicle_id: ctx.params.id };
-        const [bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos] =
-          await Promise.all([
-            ctx.data.findMany("bitacora", { where }),
-            ctx.data.findMany("falla", { where }),
-            ctx.data.findMany("mantenimiento_correctivo", { where }),
-            ctx.data.findMany("mantenimiento_preventivo", { where }),
-            ctx.data.findMany("servicio_programado", { where }),
-            ctx.data.findMany("lectura_uso", { where }),
-            ctx.data.findMany("documento_vehiculo", { where }),
-          ]);
+        const tablas = [
+          "bitacora",
+          "falla",
+          "mantenimiento_correctivo",
+          "mantenimiento_preventivo",
+          "servicio_programado",
+          "lectura_uso",
+          "documento_vehiculo",
+          "carga_combustible",
+        ];
+        // Lo borrado no es historia; lo más nuevo va primero.
+        const [bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos, cargas] =
+          await Promise.all(
+            tablas.map(async (tabla) =>
+              (await ctx.data.findMany(tabla, { where, limit: 10000 }))
+                .filter((fila) => fila.is_active !== false)
+                .sort((a, b) =>
+                  String(b.fecha ?? b.created_at ?? "").localeCompare(String(a.fecha ?? a.created_at ?? "")),
+                ),
+            ),
+          );
+        const grupos = { bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos, cargas };
         return {
-          data: { vehicle, bitacoras, fallas, correctivos, preventivos, servicios, lecturas, documentos },
+          data: {
+            vehicle,
+            ...grupos,
+            cargas_combustible: cargas,
+            linea_de_tiempo: linea_de_tiempo(grupos),
+          },
         };
       },
     }),

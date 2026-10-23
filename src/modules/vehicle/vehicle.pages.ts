@@ -1,3 +1,4 @@
+import { TIPOS_COMBUSTIBLE } from "../../combustible.ts";
 import {
   build_feature_shell_page,
   type KirletPageDecl,
@@ -71,6 +72,14 @@ export const vehicle_pages: KirletPageDecl[] = [
               },
               { name: "serie", component: "input-text", label: "Número de serie" },
               { name: "capacidad_carga_kg", component: "input-number", label: "Capacidad de carga (kg)" },
+              {
+                name: "tipo_combustible",
+                component: "input-radio-buttons",
+                label: "Combustible",
+                options: [...TIPOS_COMBUSTIBLE],
+                help: "Se usa de inicio en cada carga de combustible.",
+              },
+              { name: "capacidad_tanque_l", component: "input-number", label: "Capacidad del tanque (litros)" },
               {
                 name: "estado_operativo",
                 component: "input-radio-buttons",

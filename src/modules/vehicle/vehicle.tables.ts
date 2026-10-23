@@ -32,6 +32,8 @@ export const vehicle_tables: KirletTableDecl[] = [
       { name: "lectura_km", type: "real" },
       { name: "lectura_horas", type: "real" },
       { name: "etiqueta", type: "text" },
+      { name: "tipo_combustible", type: "text" },
+      { name: "capacidad_tanque_l", type: "real" },
     ],
     indexes: [
       { name: "idx_vehicle_name", columns: ["name"] },
