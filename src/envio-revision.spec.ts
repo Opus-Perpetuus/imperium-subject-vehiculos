@@ -7,6 +7,10 @@ import {
   bitacora_desde_plantilla,
   llenar_partidas,
   es_error,
+  inferir_cliente,
+  anexar_visita,
+  texto_visitas,
+  visita_desde_headers,
   type PartidaRevision,
 } from "./control.ts";
 import { create_kirlet_test_context, type KirletDefinition } from "@opus-perpetuus/imperium-core-kit";
@@ -17,11 +21,14 @@ async function api(
   method: string,
   path: string,
   body?: unknown,
+  extra_headers?: Record<string, string>,
 ) {
+  const headers: Record<string, string> = { ...(extra_headers ?? {}) };
+  if (body) headers["content-type"] = "application/json";
   const res = await server.fetch(
     new Request(`http://vehiculos.test${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,
     }),
   );
@@ -164,3 +171,113 @@ describe("envio a revisión", () => {
     }
   });
 });
+
+describe("visitas al enlace público", () => {
+  test("infiere dispositivo y sistema del user-agent", () => {
+    expect(inferir_cliente("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)").dispositivo).toBe("móvil");
+    expect(inferir_cliente("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)").sistema).toBe("iOS");
+    expect(inferir_cliente("Mozilla/5.0 (Windows NT 10.0; Win64; x64)").sistema).toBe("Windows");
+    expect(inferir_cliente("Mozilla/5.0 (Windows NT 10.0; Win64; x64)").dispositivo).toBe("escritorio");
+  });
+
+  test("anexa y resume visitas", () => {
+    const headers = new Headers({
+      "user-agent": "Mozilla/5.0 (Linux; Android 14; Mobile)",
+      origin: "https://ejemplo.test",
+      referer: "https://ejemplo.test/share",
+    });
+    const visita = visita_desde_headers(headers, "2026-10-26T15:00:00.000Z");
+    expect(visita.dispositivo).toBe("móvil");
+    expect(visita.sistema).toBe("Android");
+    expect(visita.origen).toBe("https://ejemplo.test");
+    const lista = anexar_visita([], visita);
+    expect(lista).toHaveLength(1);
+    expect(texto_visitas(lista)).toContain("móvil");
+    expect(texto_visitas(lista)).toContain("Android");
+  });
+
+  test("abrir el enlace público registra visita; el detalle autenticado la muestra", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const unidad = await api(server, "POST", "/vehicle", {
+        name: "Unidad visita",
+        placas: "VIS-01",
+      });
+      expect(unidad.status).toBe(201);
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "Plantilla visita",
+        conceptos: "Frenos",
+      });
+      expect(plantilla.status).toBe(201);
+      const bit = await api(server, "POST", "/bitacora", {
+        name: "Bit visita",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+      });
+      expect(bit.status).toBe(201);
+      const publico = await api(server, "POST", `/bitacora/${bit.json.data.id}/enviar-revision-publica`, {});
+      expect(publico.status).toBe(201);
+      const id = publico.json.data.id;
+
+      const abierto = await api(
+        server,
+        "GET",
+        `/envio-revision/publico/${id}`,
+        undefined,
+        {
+          "user-agent": "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X)",
+          origin: "https://firmas.test",
+          referer: "https://firmas.test/a",
+        },
+      );
+      expect(abierto.status).toBe(200);
+      expect(abierto.json.data.visitas).toBeUndefined();
+      expect(abierto.json.data.estado).toBe("pendiente");
+
+      const detalle = await api(server, "GET", `/envio-revision/${id}`);
+      expect(detalle.status).toBe(200);
+      expect(detalle.json.data.visitas).toHaveLength(1);
+      expect(detalle.json.data.visitas[0].dispositivo).toBe("tableta");
+      expect(detalle.json.data.visitas[0].sistema).toBe("iOS");
+      expect(detalle.json.data.visitas[0].origen).toBe("https://firmas.test");
+      expect(String(detalle.json.data.visitas_texto)).toContain("tableta");
+
+      const firma = await api(server, "POST", `/envio-revision/publico/${id}/firmar`, {
+        firma: "data:image/png;base64,bbb",
+        firmante: "Ana",
+      });
+      expect(firma.status).toBe(200);
+      expect(firma.json.data.estado).toBe("firmado");
+      expect(firma.json.data.visitas).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("partidas UI flags", () => {
+  test("plantilla agrega abajo y bitácora expone forzar alarma", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const plantilla = await api(server, "GET", "/pages/vehiculos.plantilla-revision");
+      expect(plantilla.status).toBe(200);
+      const campo_p = (plantilla.json.page?.props?.form?.fields ?? []).find(
+        (f: { name?: string }) => f.name === "items",
+      );
+      expect(campo_p?.partidas).toBe("plantilla");
+      expect(campo_p?.partidas_agregar_abajo).toBe(true);
+      expect(String(campo_p?.help ?? "").toLowerCase()).toContain("abajo");
+
+      const bitacora = await api(server, "GET", "/pages/vehiculos.bitacora");
+      expect(bitacora.status).toBe(200);
+      const campo_b = (bitacora.json.page?.props?.form?.fields ?? []).find(
+        (f: { name?: string }) => f.name === "items",
+      );
+      expect(campo_b?.partidas).toBe("bitacora");
+      expect(String(campo_b?.help ?? "").toLowerCase()).toContain("forzar alarma");
+    } finally {
+      server.stop();
+    }
+  });
+});
+

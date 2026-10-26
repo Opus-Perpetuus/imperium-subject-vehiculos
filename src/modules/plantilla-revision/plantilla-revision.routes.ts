@@ -24,8 +24,9 @@ const PARTIDAS = {
   component: "input-hidden",
   label: "Partidas",
   column_span: "full",
-  help: "Agrega cada concepto. En cada partida puedes cambiar las opciones, marcar cuáles son de alarma y cuál queda preseleccionada.",
+  help: "Agrega cada concepto con el botón de arriba o el de abajo (queda al final). En cada partida puedes cambiar las opciones, marcar cuáles son de alarma y cuál queda preseleccionada.",
   partidas: "plantilla",
+  partidas_agregar_abajo: true,
 } as FeatureShellFieldDescriptor;
 
 export const plantilla_revision_module = definir_recurso({

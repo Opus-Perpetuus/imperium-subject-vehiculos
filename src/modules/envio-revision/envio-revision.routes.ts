@@ -7,12 +7,16 @@ import {
   type KirletCtx,
 } from "@opus-perpetuus/imperium-core-kit";
 import {
+  anexar_visita,
   es_error,
   etiqueta_vehiculo,
   normalizar_imagenes,
   normalizar_items,
+  normalizar_visitas,
   ordenar_partidas_alarma,
   partida_en_alarma,
+  texto_visitas,
+  visita_desde_headers,
   type PartidaRevision,
 } from "../../control.ts";
 import { API, definir_recurso, define_routes } from "../../recurso.ts";
@@ -51,6 +55,17 @@ function partidas_para_firma(items: unknown): PartidaRevision[] {
   return ordenar_partidas_alarma(normalizadas);
 }
 
+async function registrar_visita_publica(ctx: KirletCtx, envio: DomainRow): Promise<DomainRow> {
+  const visita = visita_desde_headers(ctx.req.headers, now_iso());
+  const visitas = anexar_visita(envio.visitas, visita);
+  const actualizado = await ctx.data.update(
+    "envio_revision",
+    { id: String(envio.id) },
+    { visitas, updated_at: visita.visitado_en },
+  );
+  return actualizado ?? { ...envio, visitas };
+}
+
 async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
   const items = partidas_para_firma(bitacora.items);
   const imagenes = normalizar_imagenes(bitacora.imagenes);
@@ -72,16 +87,32 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
   };
 }
 
-async function vista_envio(ctx: KirletCtx, envio: DomainRow) {
+async function vista_envio(
+  ctx: KirletCtx,
+  envio: DomainRow,
+  opts: { incluir_visitas?: boolean } = {},
+) {
   const ids = ids_de(envio.bitacora_ids);
   const bitacoras = [];
   for (const bitacora of await bitacoras_de(ctx, ids)) {
     bitacoras.push(await vista_bitacora(ctx, bitacora));
   }
-  return {
+  const visitas = normalizar_visitas(envio.visitas);
+  const base = {
     ...envio,
     bitacoras,
     ruta_compartir: `/internal/envio-revision/${envio.id}`,
+  };
+  if (!opts.incluir_visitas) {
+    const publico = { ...base } as Record<string, unknown>;
+    delete publico.visitas;
+    delete publico.visitas_texto;
+    return publico;
+  }
+  return {
+    ...base,
+    visitas,
+    visitas_texto: texto_visitas(visitas),
   };
 }
 
@@ -170,6 +201,14 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     label: "Estado",
     read_only: true,
   },
+  {
+    name: "visitas_texto",
+    component: "input-textarea",
+    label: "Visitas al enlace público",
+    column_span: "full",
+    read_only: true,
+    help: "Registro de quién abrió el enlace público: fecha, dispositivo, sistema y origen/referrer.",
+  },
 ];
 
 export const envio_revision_module = definir_recurso({
@@ -189,6 +228,7 @@ export const envio_revision_module = definir_recurso({
     { name: "firmante", type: "text" },
     { name: "estado", type: "text", notNull: true, default: "pendiente" },
     { name: "share_hint", type: "text" },
+    { name: "visitas", type: "json" },
   ],
   fields: {
     modo: { type: "string", required: true, search: true },
@@ -200,6 +240,7 @@ export const envio_revision_module = definir_recurso({
     firmante: { type: "string", search: true },
     estado: { type: "string", search: true },
     share_hint: { type: "string" },
+    visitas: { type: "json" },
   },
   list: [
     { key: "name", label: "Título" },
@@ -232,7 +273,13 @@ export const envio_revision_module = definir_recurso({
         if (String(envio.modo) !== "publico") {
           throw new KirletHttpError(404, "not_found", "este envío no es público");
         }
-        return { data: await vista_envio(ctx, envio) };
+        let actual = envio;
+        try {
+          actual = await registrar_visita_publica(ctx, envio);
+        } catch {
+          // Abrir/firmar no debe fallar si el registro de visita falla.
+        }
+        return { data: await vista_envio(ctx, actual) };
       },
     },
     "POST /envio-revision/publico/:id/firmar": {
@@ -253,7 +300,7 @@ export const envio_revision_module = definir_recurso({
     "GET /envio-revision/:id": async (ctx) => {
       const envio = await ctx.data.findOne("envio_revision", { id: ctx.params.id });
       if (!envio || envio.is_active === false) return ctx.not_found();
-      return { data: await vista_envio(ctx, envio) };
+      return { data: await vista_envio(ctx, envio, { incluir_visitas: true }) };
     },
     "POST /envio-revision/:id/firmar": async (ctx) => {
       const envio = await ctx.data.findOne("envio_revision", { id: ctx.params.id });
@@ -264,7 +311,7 @@ export const envio_revision_module = definir_recurso({
         body.firmante ?? (ctx as { user?: { name?: string } }).user?.name ?? "",
       );
       const actualizado = await firmar_envio(ctx, envio, firma, actor);
-      return { data: await vista_envio(ctx, actualizado) };
+      return { data: await vista_envio(ctx, actualizado, { incluir_visitas: true }) };
     },
   }),
   hooks: {
@@ -293,6 +340,7 @@ export const envio_revision_module = definir_recurso({
       row.firma = String(row.firma ?? "");
       row.firmado_at = String(row.firmado_at ?? "");
       row.firmante = String(row.firmante ?? "");
+      row.visitas = normalizar_visitas(row.visitas);
       return row;
     },
     async after_create(ctx, row) {

@@ -745,3 +745,98 @@ export function partidas_sin_reporte(
   }
   return pendientes;
 }
+
+/** Tope de visitas guardadas por envío (las más recientes). */
+export const MAX_VISITAS_ENVIO = 100;
+
+export type VisitaEnvio = {
+  visitado_en: string;
+  agente: string;
+  dispositivo: string;
+  sistema: string;
+  origen: string;
+  referrer: string;
+};
+
+/** Infiere dispositivo y SO a partir del User-Agent (heurística corta). */
+export function inferir_cliente(user_agent: string): {
+  dispositivo: string;
+  sistema: string;
+} {
+  const ua = user_agent.trim();
+  if (!ua) return { dispositivo: "desconocido", sistema: "desconocido" };
+  const lower = ua.toLowerCase();
+  let sistema = "desconocido";
+  if (/android/i.test(ua)) sistema = "Android";
+  else if (/iphone|ipad|ipod/i.test(ua)) sistema = "iOS";
+  else if (/windows nt/i.test(ua)) sistema = "Windows";
+  else if (/mac os x|macintosh/i.test(ua)) sistema = "macOS";
+  else if (/linux/i.test(ua)) sistema = "Linux";
+  else if (/cros/i.test(ua)) sistema = "ChromeOS";
+
+  let dispositivo = "escritorio";
+  if (/ipad|tablet|kindle|silk/i.test(ua) || (sistema === "Android" && !/mobile/i.test(ua))) {
+    dispositivo = "tableta";
+  } else if (/mobi|iphone|ipod|android.*mobile|windows phone/i.test(lower)) {
+    dispositivo = "móvil";
+  } else if (/bot|crawl|spider|preview|slurp/i.test(lower)) {
+    dispositivo = "bot";
+  }
+  return { dispositivo, sistema };
+}
+
+export function visita_desde_headers(headers: Headers, ahora = ""): VisitaEnvio {
+  const agente = String(headers.get("user-agent") ?? "").trim();
+  const origen = String(headers.get("origin") ?? "").trim();
+  const referrer = String(headers.get("referer") ?? headers.get("referrer") ?? "").trim();
+  const { dispositivo, sistema } = inferir_cliente(agente);
+  return {
+    visitado_en: ahora || new Date().toISOString(),
+    agente: agente.slice(0, 512),
+    dispositivo,
+    sistema,
+    origen: origen.slice(0, 512),
+    referrer: referrer.slice(0, 512),
+  };
+}
+
+export function normalizar_visitas(value: unknown): VisitaEnvio[] {
+  if (!Array.isArray(value)) return [];
+  const out: VisitaEnvio[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const visitado_en = String(r.visitado_en ?? r.at ?? "").trim();
+    if (!visitado_en) continue;
+    out.push({
+      visitado_en,
+      agente: String(r.agente ?? r.user_agent ?? "").trim().slice(0, 512),
+      dispositivo: String(r.dispositivo ?? r.device ?? "desconocido").trim() || "desconocido",
+      sistema: String(r.sistema ?? r.os ?? "desconocido").trim() || "desconocido",
+      origen: String(r.origen ?? r.origin ?? "").trim().slice(0, 512),
+      referrer: String(r.referrer ?? r.desde ?? "").trim().slice(0, 512),
+    });
+  }
+  return out;
+}
+
+/** Agrega una visita y conserva solo las más recientes. */
+export function anexar_visita(
+  previas: unknown,
+  visita: VisitaEnvio,
+  max = MAX_VISITAS_ENVIO,
+): VisitaEnvio[] {
+  const lista = [...normalizar_visitas(previas), visita];
+  return lista.length > max ? lista.slice(lista.length - max) : lista;
+}
+
+/** Resumen compacto para el detalle autenticado. */
+export function texto_visitas(visitas: readonly VisitaEnvio[]): string {
+  if (!visitas.length) return "Todavía no hay visitas al enlace público.";
+  return visitas
+    .map((v) => {
+      const fuente = v.origen || v.referrer || "sin origen";
+      return `${v.visitado_en} · ${v.dispositivo} · ${v.sistema} · ${fuente}`;
+    })
+    .join("\n");
+}
