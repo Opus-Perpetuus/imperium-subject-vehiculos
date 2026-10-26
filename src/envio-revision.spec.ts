@@ -155,7 +155,7 @@ describe("envio a revisión", () => {
       const publico = await api(server, "POST", `/bitacora/${b1.json.data.id}/enviar-revision-publica`, {});
       expect(publico.status).toBe(201);
       expect(publico.json.data.modo).toBe("publico");
-      expect(String(publico.json.data.share_hint)).toContain("/internal/envio-revision/");
+      expect(String(publico.json.data.share_hint)).toMatch(/\/internal\/envio-revision\/detail\/.+\/.+/);
 
       const firma = await api(server, "POST", `/envio-revision/publico/${publico.json.data.id}/firmar`, {
         firma: "data:image/png;base64,aaa",
@@ -281,3 +281,47 @@ describe("partidas UI flags", () => {
   });
 });
 
+describe("envio UX form", () => {
+  test("Nuevo envío pide bitácoras con selector y share_hint de detalle", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const page = await api(server, "GET", "/pages/vehiculos.envio-revision");
+      expect(page.status).toBe(200);
+      const fields = page.json.page?.props?.form?.fields ?? [];
+      const bitacoras = fields.find((f: { name?: string }) => f.name === "bitacora_ids");
+      expect(bitacoras?.component).toBe("input-checkbox-group");
+      expect(String(bitacoras?.optionsSource ?? "")).toContain("bitacora");
+      expect(String(bitacoras?.optionsSource ?? "")).toContain("as=options");
+      const hint = fields.find((f: { name?: string }) => f.name === "share_hint");
+      expect(hint?.read_only).toBe(true);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("enviar revisión interna desde bitácora sin revisor queda pendiente de completar", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    try {
+      const unidad = await api(server, "POST", "/vehicle", { name: "U", placas: "UX-1" });
+      expect(unidad.status).toBe(201);
+      const plantilla = await api(server, "POST", "/plantilla-revision", {
+        name: "P",
+        conceptos: "Frenos",
+      });
+      expect(plantilla.status).toBe(201);
+      const bit = await api(server, "POST", "/bitacora", {
+        name: "B",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+      });
+      expect(bit.status).toBe(201);
+      const envio = await api(server, "POST", `/bitacora/${bit.json.data.id}/enviar-revision-interna`, {});
+      expect(envio.status).toBe(201);
+      expect(envio.json.data.modo).toBe("interno");
+      expect(String(envio.json.data.usuario_id ?? "")).toBe("");
+      expect(String(envio.json.mensaje ?? "").toLowerCase()).toContain("revisor");
+    } finally {
+      server.stop();
+    }
+  });
+});

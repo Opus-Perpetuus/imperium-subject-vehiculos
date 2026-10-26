@@ -710,6 +710,20 @@ export function partida_en_alarma(partida: PartidaRevision): boolean {
 }
 
 /** Alarmas primero; el resto conserva el orden relativo. */
+/** Slug cosmético del detalle SIC (`detail/<slug>/<id>`). */
+export function slug_ruta(name: unknown): string {
+  const normalized = String(name ?? "")
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "no-name";
+}
+
+/** Ruta interna del detalle de un envío (para Compartir). */
+export function ruta_detalle_envio(id: unknown, name: unknown = ""): string {
+  return `/internal/envio-revision/detail/${slug_ruta(name)}/${String(id ?? "").trim()}`;
+}
+
 export function ordenar_partidas_alarma(
   partidas: readonly PartidaRevision[],
 ): PartidaRevision[] {

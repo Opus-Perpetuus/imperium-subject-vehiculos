@@ -39,6 +39,14 @@
       "label": "Editar Bitácoras de revisión"
     },
     {
+      "id": "subject.vehiculos.envio-revision.read",
+      "label": "Ver Envíos a revisión"
+    },
+    {
+      "id": "subject.vehiculos.envio-revision.write",
+      "label": "Editar Envíos a revisión"
+    },
+    {
       "id": "subject.vehiculos.falla.read",
       "label": "Ver Fallas"
     },
@@ -138,6 +146,15 @@
           "icon": "document"
         },
         {
+          "id": "vehiculos.envio-revision",
+          "label": "Envíos a revisión",
+          "pageId": "vehiculos.envio-revision",
+          "order": 35,
+          "path": "envio-revision",
+          "permission": "subject.vehiculos.envio-revision.read",
+          "icon": "document"
+        },
+        {
           "id": "vehiculos.falla",
           "label": "Fallas",
           "pageId": "vehiculos.falla",
@@ -234,6 +251,11 @@
       "permission": "subject.vehiculos.bitacora.read"
     },
     {
+      "id": "vehiculos.envio-revision",
+      "path": "envio-revision",
+      "permission": "subject.vehiculos.envio-revision.read"
+    },
+    {
       "id": "vehiculos.falla",
       "path": "falla",
       "permission": "subject.vehiculos.falla.read"
@@ -278,10 +300,23 @@
     "domain": "shared-nox-postgres",
     "files": false
   },
+  "public": {
+    "api": [
+      {
+        "pathPrefix": "/envio-revision/publico",
+        "access": "anonymous",
+        "methods": [
+          "GET",
+          "POST"
+        ]
+      }
+    ]
+  },
   "resources": {
     "vehicle": "vehicle",
     "plantilla-revision": "plantilla-revision",
     "bitacora": "bitacora",
+    "envio-revision": "envio-revision",
     "falla": "falla",
     "mantenimiento-correctivo": "mantenimiento-correctivo",
     "mantenimiento-preventivo": "mantenimiento-preventivo",

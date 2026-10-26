@@ -23,6 +23,8 @@ import {
   quitar_ranuras,
   RANURAS_REVISION,
   type PartidaRevision,
+  ruta_detalle_envio,
+  ordenar_partidas_alarma,
 } from "../../control.ts";
 import { API, VEHICULO, definir_recurso, define_routes } from "../../recurso.ts";
 
@@ -172,14 +174,14 @@ export const bitacora_module = definir_recurso({
     {
       id: "enviar-revision-interna",
       label: "Enviar a revisión interna",
-      confirm: "Se crea un envío interno con esta bitácora. Completa el revisor en Envíos a revisión si hace falta.",
+      confirm: "Se crea un envío interno con esta bitácora. Luego ábrelo en Envíos a revisión para elegir revisor (si aún no tiene) y firmar.",
       method: "POST",
       action: `${API}/bitacora/:id/enviar-revision-interna`,
     },
     {
       id: "enviar-revision-publica",
       label: "Enviar a revisión pública",
-      confirm: "Se crea un envío público. Luego comparte la vista con el botón Compartir.",
+      confirm: "Se crea un envío público. Ábrelo en Envíos a revisión y pulsa Compartir para mandar el enlace de firma.",
       method: "POST",
       action: `${API}/bitacora/:id/enviar-revision-publica`,
     },
@@ -196,7 +198,8 @@ export const bitacora_module = definir_recurso({
       const row = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!row || row.is_active === false) return ctx.not_found();
       const items = normalizar_items(row.items);
-      return { data: { ...row, items: es_error(items) ? row.items : items } };
+      if (es_error(items)) return { data: { ...row, items: row.items } };
+      return { data: { ...row, items: ordenar_partidas_alarma(items) } };
     },
 
 
@@ -245,7 +248,7 @@ export const bitacora_module = definir_recurso({
         firmado_at: "",
         firmante: "",
         estado: "pendiente",
-        share_hint: modo === "publico" ? `/internal/envio-revision/${id}` : "",
+        share_hint: modo === "publico" ? ruta_detalle_envio(id, titulo) : "",
         is_active: true,
         created_at: ts,
         updated_at: ts,
@@ -266,14 +269,12 @@ export const bitacora_module = definir_recurso({
       if (!bitacora || bitacora.is_active === false) return ctx.not_found();
       const body = (await ctx.body<Record<string, unknown>>()) ?? {};
       const usuario_id = String(body.usuario_id ?? "").trim();
-      if (!usuario_id) {
-        throw new KirletHttpError(400, "validation_error", "elige el usuario revisor");
-      }
       const ts = now_iso();
       const id = new_id("envio_revi");
+      const titulo = String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim();
       const created = await ctx.data.insert("envio_revision", {
         id,
-        name: String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim(),
+        name: titulo,
         description: String(body.description ?? "").trim(),
         modo: "interno",
         usuario_id,
@@ -288,7 +289,15 @@ export const bitacora_module = definir_recurso({
         created_at: ts,
         updated_at: ts,
       });
-      return ctx.created(created);
+      return ctx.json(
+        {
+          data: created,
+          mensaje: usuario_id
+            ? `Envío asignado a ${created.usuario_nombre || usuario_id}.`
+            : "Envío interno creado. Ábrelo en Envíos a revisión y elige el revisor.",
+        },
+        201,
+      );
     },
     "POST /bitacora/:id/enviar-revision-publica": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
@@ -308,7 +317,7 @@ export const bitacora_module = definir_recurso({
         firmado_at: "",
         firmante: "",
         estado: "pendiente",
-        share_hint: `/internal/envio-revision/${id}`,
+        share_hint: ruta_detalle_envio(id, String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim()),
         is_active: true,
         created_at: ts,
         updated_at: ts,
@@ -316,7 +325,7 @@ export const bitacora_module = definir_recurso({
       return ctx.json(
         {
           data: created,
-          mensaje: "Envío público listo. Abre el envío y usa Compartir en el encabezado.",
+          mensaje: "Envío público listo. Ábrelo en Envíos a revisión y pulsa Compartir para el enlace de firma.",
         },
         201,
       );

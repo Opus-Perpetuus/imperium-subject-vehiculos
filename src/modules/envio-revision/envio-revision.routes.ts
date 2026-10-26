@@ -15,6 +15,7 @@ import {
   normalizar_visitas,
   ordenar_partidas_alarma,
   partida_en_alarma,
+  ruta_detalle_envio,
   texto_visitas,
   visita_desde_headers,
   type PartidaRevision,
@@ -101,7 +102,7 @@ async function vista_envio(
   const base = {
     ...envio,
     bitacoras,
-    ruta_compartir: `/internal/envio-revision/${envio.id}`,
+    ruta_compartir: ruta_detalle_envio(envio.id, envio.name),
   };
   if (!opts.incluir_visitas) {
     const publico = { ...base } as Record<string, unknown>;
@@ -174,14 +175,16 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     component: "input-datalist",
     label: "Revisor interno",
     optionsSource: "api://user?as=options&limite=1000",
-    help: "Solo para modo interno.",
+    help: "Obligatorio en modo interno. Puedes crearlo vacío desde la bitácora y completarlo aquí.",
   },
   {
     name: "bitacora_ids",
-    component: "input-textarea",
-    label: "Ids de bitácoras",
+    component: "input-checkbox-group",
+    label: "Bitácoras a revisar",
     column_span: "full",
-    help: "Una por línea (o separadas por coma). También puedes enviar desde la bitácora.",
+    required: true,
+    optionsSource: `${API}/bitacora?as=options&limite=1000`,
+    help: "Elige una o más bitácoras. Quien firme lo hace una sola vez para todo el grupo.",
   },
   {
     name: "description",
@@ -200,6 +203,14 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     component: "input-text",
     label: "Estado",
     read_only: true,
+  },
+  {
+    name: "share_hint",
+    component: "input-text",
+    label: "Ruta para Compartir",
+    column_span: "full",
+    read_only: true,
+    help: "En modo público: abre este envío y pulsa Compartir en el encabezado. El enlace público muestra las bitácoras y permite firmar el grupo una vez.",
   },
   {
     name: "visitas_texto",
@@ -345,15 +356,35 @@ export const envio_revision_module = definir_recurso({
     },
     async after_create(ctx, row) {
       if (String(row.modo) === "publico") {
+        const hint = ruta_detalle_envio(row.id, row.name);
         await ctx.data.update(
           "envio_revision",
           { id: String(row.id) },
           {
-            share_hint: `/internal/envio-revision/${row.id}`,
+            share_hint: hint,
             updated_at: now_iso(),
           },
         );
+        row.share_hint = hint;
       }
+    },
+    async before_update(ctx, row, existing) {
+      if ("bitacora_ids" in row) {
+        const ids = ids_de(row.bitacora_ids);
+        await bitacoras_de(ctx, ids);
+        row.bitacora_ids = ids;
+      }
+      const modo = String(row.modo ?? existing.modo ?? "").trim();
+      if (modo === "interno" && "usuario_id" in row) {
+        row.usuario_id = String(row.usuario_id ?? "").trim();
+        if (row.usuario_id) {
+          row.usuario_nombre = String(row.usuario_nombre ?? row.usuario_id).trim();
+        }
+      }
+      if (modo === "publico") {
+        row.share_hint = ruta_detalle_envio(existing.id, row.name ?? existing.name);
+      }
+      return row;
     },
   },
 });
