@@ -40,7 +40,7 @@ const PARTIDAS = {
   component: "input-hidden",
   label: "Partidas",
   column_span: "full",
-  help: "Al elegir una plantilla se cargan sus partidas. En cada una eliges el resultado y anotas lo que haga falta.",
+  help: "Al elegir una plantilla se cargan sus partidas. En cada una eliges el resultado, puedes forzar alarma y anotas lo que haga falta.",
   partidas: "bitacora",
 } as FeatureShellFieldDescriptor;
 
@@ -169,6 +169,20 @@ export const bitacora_module = definir_recurso({
       method: "POST",
       action: `${API}/bitacora/:id/reportar-falla`,
     },
+    {
+      id: "enviar-revision-interna",
+      label: "Enviar a revisión interna",
+      confirm: "Se crea un envío interno con esta bitácora. Completa el revisor en Envíos a revisión si hace falta.",
+      method: "POST",
+      action: `${API}/bitacora/:id/enviar-revision-interna`,
+    },
+    {
+      id: "enviar-revision-publica",
+      label: "Enviar a revisión pública",
+      confirm: "Se crea un envío público. Luego comparte la vista con el botón Compartir.",
+      method: "POST",
+      action: `${API}/bitacora/:id/enviar-revision-publica`,
+    },
   ],
   redact: (row) => {
     const copy = { ...row };
@@ -183,6 +197,129 @@ export const bitacora_module = definir_recurso({
       if (!row || row.is_active === false) return ctx.not_found();
       const items = normalizar_items(row.items);
       return { data: { ...row, items: es_error(items) ? row.items : items } };
+    },
+
+
+    "POST /bitacora/enviar-revision": async (ctx) => {
+      const body = (await ctx.body<Record<string, unknown>>()) ?? {};
+      const raw = body.bitacora_ids ?? body.ids ?? body.bitacora_id;
+      const ids = Array.isArray(raw)
+        ? [...new Set(raw.map((id) => String(id ?? "").trim()).filter(Boolean))]
+        : typeof raw === "string"
+          ? [...new Set(raw.split(/[\s,]+/).map((id) => id.trim()).filter(Boolean))]
+          : [];
+      if (!ids.length) throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora");
+      for (const id of ids) {
+        const bitacora = await ctx.data.findOne("bitacora", { id });
+        if (!bitacora || bitacora.is_active === false) {
+          throw new KirletHttpError(400, "validation_error", `la bitácora ${id} no existe`);
+        }
+      }
+      const modo = String(body.modo ?? "").trim();
+      if (modo !== "interno" && modo !== "publico") {
+        throw new KirletHttpError(400, "validation_error", "el modo debe ser interno o publico");
+      }
+      let usuario_id = "";
+      let usuario_nombre = "";
+      if (modo === "interno") {
+        usuario_id = String(body.usuario_id ?? "").trim();
+        if (!usuario_id) {
+          throw new KirletHttpError(400, "validation_error", "elige el usuario revisor");
+        }
+        usuario_nombre = String(body.usuario_nombre ?? usuario_id).trim();
+      }
+      const ts = now_iso();
+      const id = new_id("envio_revi");
+      const titulo =
+        String(body.name ?? "").trim() ||
+        (ids.length === 1 ? `Revisión de bitácora` : `Revisión de ${ids.length} bitácoras`);
+      const created = await ctx.data.insert("envio_revision", {
+        id,
+        name: titulo,
+        description: String(body.description ?? "").trim(),
+        modo,
+        usuario_id,
+        usuario_nombre,
+        bitacora_ids: ids,
+        firma: "",
+        firmado_at: "",
+        firmante: "",
+        estado: "pendiente",
+        share_hint: modo === "publico" ? `/internal/envio-revision/${id}` : "",
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      return ctx.json(
+        {
+          data: created,
+          mensaje:
+            modo === "publico"
+              ? "Envío listo. Abre Envíos a revisión y usa Compartir."
+              : `Envío asignado a ${usuario_nombre || usuario_id}.`,
+        },
+        201,
+      );
+    },
+    "POST /bitacora/:id/enviar-revision-interna": async (ctx) => {
+      const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
+      if (!bitacora || bitacora.is_active === false) return ctx.not_found();
+      const body = (await ctx.body<Record<string, unknown>>()) ?? {};
+      const usuario_id = String(body.usuario_id ?? "").trim();
+      if (!usuario_id) {
+        throw new KirletHttpError(400, "validation_error", "elige el usuario revisor");
+      }
+      const ts = now_iso();
+      const id = new_id("envio_revi");
+      const created = await ctx.data.insert("envio_revision", {
+        id,
+        name: String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim(),
+        description: String(body.description ?? "").trim(),
+        modo: "interno",
+        usuario_id,
+        usuario_nombre: String(body.usuario_nombre ?? usuario_id).trim(),
+        bitacora_ids: [String(bitacora.id)],
+        firma: "",
+        firmado_at: "",
+        firmante: "",
+        estado: "pendiente",
+        share_hint: "",
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      return ctx.created(created);
+    },
+    "POST /bitacora/:id/enviar-revision-publica": async (ctx) => {
+      const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
+      if (!bitacora || bitacora.is_active === false) return ctx.not_found();
+      const body = (await ctx.body<Record<string, unknown>>()) ?? {};
+      const ts = now_iso();
+      const id = new_id("envio_revi");
+      const created = await ctx.data.insert("envio_revision", {
+        id,
+        name: String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim(),
+        description: String(body.description ?? "").trim(),
+        modo: "publico",
+        usuario_id: "",
+        usuario_nombre: "",
+        bitacora_ids: [String(bitacora.id)],
+        firma: "",
+        firmado_at: "",
+        firmante: "",
+        estado: "pendiente",
+        share_hint: `/internal/envio-revision/${id}`,
+        is_active: true,
+        created_at: ts,
+        updated_at: ts,
+      });
+      return ctx.json(
+        {
+          data: created,
+          mensaje: "Envío público listo. Abre el envío y usa Compartir en el encabezado.",
+        },
+        201,
+      );
     },
     "POST /bitacora/:id/reportar-falla": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
