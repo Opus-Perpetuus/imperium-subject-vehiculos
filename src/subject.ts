@@ -2,6 +2,7 @@ import { define_subject } from "@opus-perpetuus/imperium-core-kit";
 import pkg from "../package.json" with { type: "json" };
 import { carga_combustible_module } from "./modules/carga-combustible/carga-combustible.routes.ts";
 import { bitacora_module } from "./modules/bitacora/bitacora.routes.ts";
+import { envio_revision_module } from "./modules/envio-revision/envio-revision.routes.ts";
 import { documento_vehiculo_module } from "./modules/documento-vehiculo/documento-vehiculo.routes.ts";
 import { falla_module } from "./modules/falla/falla.routes.ts";
 import { lectura_uso_module } from "./modules/lectura-uso/lectura-uso.routes.ts";
@@ -18,7 +19,8 @@ export const SUBJECT = define_subject({
   version: pkg.version,
   image: `ghcr.io/opus-perpetuus/subject-vehiculos:${pkg.version}`,
   compat: { nox: ">=0.5.0", kit: "^0.5.0" },
-  schema_version: 2,
+  schema_version: 3,
+  public: true,
   menu_root: {
     id: "vehiculos.root",
     label: "Vehículos",
@@ -28,6 +30,7 @@ export const SUBJECT = define_subject({
     vehicle_module,
     plantilla_revision_module,
     bitacora_module,
+    envio_revision_module,
     falla_module,
     mantenimiento_correctivo_module,
     mantenimiento_preventivo_module,

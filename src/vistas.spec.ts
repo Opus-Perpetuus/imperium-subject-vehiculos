@@ -155,6 +155,11 @@ describe("vistas publicadas", () => {
           fecha_vencimiento: sumar_dias(hoy, 5),
           aviso_dias: 15,
         },
+        "envio-revision": {
+          name: "Envío de prueba",
+          modo: "publico",
+          bitacora_ids: [], // se llena tras crear la bitácora
+        },
       };
 
       const creados = new Map<string, { id: string; body: Record<string, unknown> }>();
@@ -167,10 +172,21 @@ describe("vistas publicadas", () => {
       }
       expect(recursos.has("vehicle")).toBe(true);
       expect(recursos.has("servicio-programado")).toBe(true);
-      for (const recurso of recursos) {
-        if (recurso === "vehicle") continue;
-        const body = altas[recurso];
+      const orden = [...recursos].filter((r) => r !== "vehicle").sort((a, b) => {
+        if (a === "bitacora") return -1;
+        if (b === "bitacora") return 1;
+        if (a === "envio-revision") return 1;
+        if (b === "envio-revision") return -1;
+        return a.localeCompare(b);
+      });
+      for (const recurso of orden) {
+        const body = { ...altas[recurso] };
         expect(body).toBeDefined();
+        if (recurso === "envio-revision") {
+          const bitacora = creados.get("bitacora");
+          expect(bitacora).toBeDefined();
+          body.bitacora_ids = [bitacora!.id];
+        }
         const alta = await api(server, "POST", `/${recurso}`, body);
         expect(alta.status).toBe(201);
         const id = alta.json.data.id as string;

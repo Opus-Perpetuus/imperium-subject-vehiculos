@@ -24,7 +24,7 @@ const PARTIDAS = {
   component: "input-hidden",
   label: "Partidas",
   column_span: "full",
-  help: "Agrega cada concepto. En cada partida puedes cambiar las opciones y cuál queda preseleccionada.",
+  help: "Agrega cada concepto. En cada partida puedes cambiar las opciones, marcar cuáles son de alarma y cuál queda preseleccionada.",
   partidas: "plantilla",
 } as FeatureShellFieldDescriptor;
 

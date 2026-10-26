@@ -3,6 +3,8 @@
 export type OpcionPartida = {
   value: string;
   label: string;
+  /** Si la opción elegida es de alarma, la partida sube al firmar. */
+  alarma?: boolean;
 };
 
 export const OPCIONES_REVISION: OpcionPartida[] = [
@@ -22,6 +24,8 @@ export type PartidaPlantilla = {
 export type PartidaRevision = PartidaPlantilla & {
   resultado: string;
   nota?: string;
+  /** Alarma manual al generar/editar la revisión, independiente de la opción. */
+  alarma_forzada?: boolean;
 };
 
 export type ErrorNorm = { error: string };
@@ -122,7 +126,11 @@ export function pide_cumplir(value: unknown): boolean {
 }
 
 function clonar_opciones(opciones: readonly OpcionPartida[]): OpcionPartida[] {
-  return opciones.map((opcion) => ({ value: opcion.value, label: opcion.label }));
+  return opciones.map((opcion) => {
+    const copia: OpcionPartida = { value: opcion.value, label: opcion.label };
+    if (opcion.alarma) copia.alarma = true;
+    return copia;
+  });
 }
 
 function encajar_opcion(valor: string, opciones: readonly OpcionPartida[]): string | null {
@@ -151,7 +159,11 @@ function leer_opciones(
       if (!value || !label) return { error: "cada opción necesita valor y etiqueta" };
       if (vistos.has(value)) return { error: "las opciones de una partida no se repiten" };
       vistos.add(value);
-      opciones.push({ value, label });
+      const entrada: OpcionPartida = { value, label };
+      if (opcion.alarma === true || opcion.alarma === "true" || opcion.alarma === 1) {
+        entrada.alarma = true;
+      }
+      opciones.push(entrada);
     }
   }
   const pedido = String(row.opcion_defecto ?? "").trim();
@@ -186,6 +198,9 @@ export function normalizar_items(value: unknown): PartidaRevision[] | ErrorNorm 
     };
     const nota = String(row.nota ?? "").trim();
     if (nota) item.nota = nota;
+    if (row.alarma_forzada === true || row.alarma_forzada === "true" || row.alarma_forzada === 1) {
+      item.alarma_forzada = true;
+    }
     items.push(item);
   }
   return items;
@@ -629,7 +644,15 @@ export const ERROR_PARTIDAS_DE_PLANTILLA =
   "las partidas de esta bitácora las define su plantilla; solo se llenan resultado y nota";
 
 function mismas_opciones(a: readonly OpcionPartida[], b: readonly OpcionPartida[]): boolean {
-  return a.length === b.length && a.every((opcion, i) => opcion.value === b[i].value && opcion.label === b[i].label);
+  return (
+    a.length === b.length &&
+    a.every(
+      (opcion, i) =>
+        opcion.value === b[i].value &&
+        opcion.label === b[i].label &&
+        !!opcion.alarma === !!b[i].alarma,
+    )
+  );
 }
 
 /**
@@ -670,9 +693,32 @@ export function llenar_partidas(
     };
     const nota = "nota" in row ? String(row.nota ?? "").trim() : String(base.nota ?? "").trim();
     if (nota) item.nota = nota;
+    const forzada =
+      "alarma_forzada" in row
+        ? row.alarma_forzada === true || row.alarma_forzada === "true" || row.alarma_forzada === 1
+        : !!base.alarma_forzada;
+    if (forzada) item.alarma_forzada = true;
     items.push(item);
   }
   return items;
+}
+
+/** La partida está en alarma si se forzó o si el resultado es una opción marcada. */
+export function partida_en_alarma(partida: PartidaRevision): boolean {
+  if (partida.alarma_forzada) return true;
+  return partida.opciones.some((opcion) => opcion.value === partida.resultado && !!opcion.alarma);
+}
+
+/** Alarmas primero; el resto conserva el orden relativo. */
+export function ordenar_partidas_alarma(
+  partidas: readonly PartidaRevision[],
+): PartidaRevision[] {
+  const alarmas: PartidaRevision[] = [];
+  const resto: PartidaRevision[] = [];
+  for (const partida of partidas) {
+    (partida_en_alarma(partida) ? alarmas : resto).push({ ...partida, opciones: clonar_opciones(partida.opciones) });
+  }
+  return [...alarmas, ...resto];
 }
 
 /**
