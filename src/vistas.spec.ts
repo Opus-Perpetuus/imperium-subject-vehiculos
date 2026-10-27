@@ -115,7 +115,7 @@ describe("vistas publicadas", () => {
         marca: "Nissan",
         modelo: "NP300",
         chofer_nombre: "Marta Ruiz",
-        estado_operativo: "en_servicio",
+        estado_operativo: "disponible",
       });
       expect(vehicle.status).toBe(201);
       const vehicle_id = vehicle.json.data.id as string;
