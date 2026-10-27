@@ -631,7 +631,13 @@ describe("subject de vehículos", () => {
       });
       expect(campos.find((campo) => campo.name === "chofer_nombre")?.component).toBe("input-text");
       expect(campos.find((campo) => campo.name === "tipo_unidad")?.component).toBe("input-radio-buttons");
-      expect(campos.find((campo) => campo.name === "estado_operativo")?.component).toBe("input-radio-buttons");
+      expect(campos.find((campo) => campo.name === "estado_operativo")?.component).toBe("input-status");
+      expect(campos.find((campo) => campo.name === "estado_operativo")?.options).toEqual([
+        { value: "disponible", label: "Disponible", color: "#198754" },
+        { value: "asignado", label: "Asignado", color: "#0d6efd" },
+        { value: "mantenimiento", label: "Mantenimiento", color: "#ffc107" },
+        { value: "inactivo", label: "Inactivo", color: "#dc3545" },
+      ]);
       expect(alta.json.page.props.data.create.action).toBe("api://m/subject-vehiculos/vehicle");
     } finally {
       server.stop();
@@ -931,7 +937,7 @@ describe("subject de vehículos", () => {
         modelo: "NP300",
         chofer_nombre: "Marta Ruiz",
         tipo_unidad: "pickup",
-        estado_operativo: "en_servicio",
+        estado_operativo: "disponible",
       });
       expect(unidad.status).toBe(201);
       expect(unidad.json.data.ref == null || unidad.json.data.ref === "").toBe(true);

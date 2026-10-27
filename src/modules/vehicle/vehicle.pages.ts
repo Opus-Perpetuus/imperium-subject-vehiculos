@@ -82,12 +82,14 @@ export const vehicle_pages: KirletPageDecl[] = [
               { name: "capacidad_tanque_l", component: "input-number", label: "Capacidad del tanque (litros)" },
               {
                 name: "estado_operativo",
-                component: "input-radio-buttons",
+                component: "input-status",
                 label: "Estado",
+                // Mirror imperium-core state-fields.ts vehicle.estado_operativo.
                 options: [
-                  { value: "en_servicio", label: "En servicio" },
-                  { value: "taller", label: "En taller" },
-                  { value: "fuera", label: "Fuera de servicio" },
+                  { value: "disponible", label: "Disponible", color: "#198754" },
+                  { value: "asignado", label: "Asignado", color: "#0d6efd" },
+                  { value: "mantenimiento", label: "Mantenimiento", color: "#ffc107" },
+                  { value: "inactivo", label: "Inactivo", color: "#dc3545" },
                 ],
               },
               {
