@@ -168,12 +168,9 @@ export const VEHICULO: FeatureShellFieldDescriptor = {
 
 export const ESTADO_ABIERTO: FeatureShellFieldDescriptor = {
   name: "estado",
-  component: "input-radio-buttons",
+  component: "input-status",
   label: "Estado",
-  options: [
-    { value: "abierto", label: "Abierto" },
-    { value: "cerrado", label: "Cerrado" },
-  ],
+  // Opciones: status-option-control (seed en status-seeds.ts).
 };
 
 async function anotar_vehiculo(ctx: KirletCtx, row: DomainRow, vehicle_id: unknown) {

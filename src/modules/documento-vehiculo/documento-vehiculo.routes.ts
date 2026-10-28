@@ -1,4 +1,5 @@
 import { fecha_iso } from "../../control.ts";
+import { general_option_list_options_source } from "../../general-option-seeds.ts";
 import { ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
 import { KirletHttpError } from "@opus-perpetuus/imperium-core-kit";
 
@@ -40,13 +41,11 @@ export const documento_vehiculo_module = definir_recurso({
       component: "input-radio-buttons",
       label: "Tipo",
       required: true,
-      options: [
-        { value: "seguro", label: "Seguro" },
-        { value: "tarjeta", label: "Tarjeta de circulación" },
-        { value: "verificacion", label: "Verificación" },
-        { value: "licencia", label: "Licencia" },
-        { value: "otro", label: "Otro" },
-      ],
+      // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+      optionsSource: general_option_list_options_source(
+        "subject-vehiculos/documento-vehiculo",
+        "tipo",
+      ),
     },
     { name: "folio", component: "input-text", label: "Folio" },
     { name: "fecha_vencimiento", component: "input-date", label: "Vencimiento", required: true },

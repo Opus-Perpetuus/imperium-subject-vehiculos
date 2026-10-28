@@ -6,7 +6,8 @@ import {
   type DomainRow,
   type KirletCtx,
 } from "@opus-perpetuus/imperium-core-kit";
-import { completar_importe, lleno, rendimiento_de_carga, TIPOS_COMBUSTIBLE } from "../../combustible.ts";
+import { completar_importe, lleno, rendimiento_de_carga } from "../../combustible.ts";
+import { general_option_list_options_source } from "../../general-option-seeds.ts";
 import { es_error, etiqueta_vehiculo, fecha_iso, numero } from "../../control.ts";
 import { VEHICULO, definir_recurso } from "../../recurso.ts";
 import { sincronizar_odometro } from "../lectura-uso/lectura-uso.routes.ts";
@@ -116,7 +117,11 @@ export const carga_combustible_module = definir_recurso({
       name: "tipo_combustible",
       component: "input-radio-buttons",
       label: "Combustible",
-      options: TIPOS_COMBUSTIBLE.map((tipo) => ({ ...tipo })),
+      // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+      optionsSource: general_option_list_options_source(
+        "subject-vehiculos/carga-combustible",
+        "tipo_combustible",
+      ),
     },
     { name: "estacion", component: "input-text", label: "Estación" },
     { name: "conductor", component: "input-text", label: "Quién cargó" },

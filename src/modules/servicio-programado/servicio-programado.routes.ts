@@ -111,13 +111,10 @@ export const servicio_programado_module = definir_recurso({
     { name: "aviso_lectura", component: "input-number", label: "Avisar unidades antes", min: 0 },
     {
       name: "estado",
-      component: "input-radio-buttons",
+      component: "input-status",
       label: "Estado",
       help: "Marcarlo cumplido quita el aviso o corre la siguiente fecha o lectura.",
-      options: [
-        { value: "programado", label: "Programado" },
-        { value: "cumplido", label: "Cumplido" },
-      ],
+      // Opciones: status-option-control (seed en status-seeds.ts).
     },
     { name: "trabajo_realizado", component: "input-textarea", label: "Trabajo realizado" },
   ],

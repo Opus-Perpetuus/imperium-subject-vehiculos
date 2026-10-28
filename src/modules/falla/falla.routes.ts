@@ -1,4 +1,5 @@
 import { estado_abierto } from "../../control.ts";
+import { general_option_list_options_source } from "../../general-option-seeds.ts";
 import { API, ESTADO_ABIERTO, VEHICULO, definir_recurso } from "../../recurso.ts";
 
 export const falla_module = definir_recurso({
@@ -49,11 +50,11 @@ export const falla_module = definir_recurso({
       name: "prioridad",
       component: "input-radio-buttons",
       label: "Prioridad",
-      options: [
-        { value: "baja", label: "Baja" },
-        { value: "media", label: "Media" },
-        { value: "alta", label: "Alta" },
-      ],
+      // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+      optionsSource: general_option_list_options_source(
+        "subject-vehiculos/falla",
+        "prioridad",
+      ),
     },
     ESTADO_ABIERTO,
     { name: "fecha", component: "input-date", label: "Fecha" },

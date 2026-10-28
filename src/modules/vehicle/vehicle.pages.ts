@@ -1,8 +1,8 @@
-import { TIPOS_COMBUSTIBLE } from "../../combustible.ts";
 import {
   build_feature_shell_page,
   type KirletPageDecl,
 } from "@opus-perpetuus/imperium-core-kit";
+import { general_option_list_options_source } from "../../general-option-seeds.ts";
 
 const API = "api://m/subject-vehiculos";
 
@@ -62,13 +62,11 @@ export const vehicle_pages: KirletPageDecl[] = [
                 name: "tipo_unidad",
                 component: "input-radio-buttons",
                 label: "Tipo de unidad",
-                options: [
-                  { value: "pickup", label: "Pickup" },
-                  { value: "van", label: "Van" },
-                  { value: "camion", label: "Camión" },
-                  { value: "motocicleta", label: "Motocicleta" },
-                  { value: "otro", label: "Otro" },
-                ],
+                // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+                optionsSource: general_option_list_options_source(
+                  "subject-vehiculos/vehicle",
+                  "tipo_unidad",
+                ),
               },
               { name: "serie", component: "input-text", label: "Número de serie" },
               { name: "capacidad_carga_kg", component: "input-number", label: "Capacidad de carga (kg)" },
@@ -76,7 +74,11 @@ export const vehicle_pages: KirletPageDecl[] = [
                 name: "tipo_combustible",
                 component: "input-radio-buttons",
                 label: "Combustible",
-                options: [...TIPOS_COMBUSTIBLE],
+                // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+                optionsSource: general_option_list_options_source(
+                  "subject-vehiculos/vehicle",
+                  "tipo_combustible",
+                ),
                 help: "Se usa de inicio en cada carga de combustible.",
               },
               { name: "capacidad_tanque_l", component: "input-number", label: "Capacidad del tanque (litros)" },
@@ -84,13 +86,7 @@ export const vehicle_pages: KirletPageDecl[] = [
                 name: "estado_operativo",
                 component: "input-status",
                 label: "Estado",
-                // Mirror imperium-core state-fields.ts vehicle.estado_operativo.
-                options: [
-                  { value: "disponible", label: "Disponible", color: "#198754" },
-                  { value: "asignado", label: "Asignado", color: "#0d6efd" },
-                  { value: "mantenimiento", label: "Mantenimiento", color: "#ffc107" },
-                  { value: "inactivo", label: "Inactivo", color: "#dc3545" },
-                ],
+                // Opciones: status-option-control (seed en status-seeds.ts).
               },
               {
                 name: "chofer",

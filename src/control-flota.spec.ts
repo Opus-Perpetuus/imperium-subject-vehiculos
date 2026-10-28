@@ -631,13 +631,11 @@ describe("subject de vehículos", () => {
       });
       expect(campos.find((campo) => campo.name === "chofer_nombre")?.component).toBe("input-text");
       expect(campos.find((campo) => campo.name === "tipo_unidad")?.component).toBe("input-radio-buttons");
+      expect(String(campos.find((campo) => campo.name === "tipo_unidad")?.optionsSource ?? "")).toContain(
+        "general-option-list-control/options",
+      );
       expect(campos.find((campo) => campo.name === "estado_operativo")?.component).toBe("input-status");
-      expect(campos.find((campo) => campo.name === "estado_operativo")?.options).toEqual([
-        { value: "disponible", label: "Disponible", color: "#198754" },
-        { value: "asignado", label: "Asignado", color: "#0d6efd" },
-        { value: "mantenimiento", label: "Mantenimiento", color: "#ffc107" },
-        { value: "inactivo", label: "Inactivo", color: "#dc3545" },
-      ]);
+      expect(campos.find((campo) => campo.name === "estado_operativo")?.options).toBeUndefined();
       expect(alta.json.page.props.data.create.action).toBe("api://m/subject-vehiculos/vehicle");
     } finally {
       server.stop();
@@ -990,14 +988,25 @@ describe("subject de vehículos", () => {
       }
       const falla_form = campos_de((await api(server, "GET", "/pages/vehiculos.falla")).json);
       expect(falla_form.find((campo) => campo.name === "prioridad")?.component).toBe("input-radio-buttons");
-      expect(falla_form.find((campo) => campo.name === "estado")?.component).toBe("input-radio-buttons");
+      expect(String(falla_form.find((campo) => campo.name === "prioridad")?.optionsSource ?? "")).toContain(
+        "general-option-list-control/options",
+      );
+      expect(falla_form.find((campo) => campo.name === "estado")?.component).toBe("input-status");
+      expect(falla_form.find((campo) => campo.name === "estado")?.options).toBeUndefined();
       const documento_form = campos_de((await api(server, "GET", "/pages/vehiculos.documento-vehiculo")).json);
       expect(documento_form.find((campo) => campo.name === "tipo")?.component).toBe("input-radio-buttons");
+      expect(String(documento_form.find((campo) => campo.name === "tipo")?.optionsSource ?? "")).toContain(
+        "general-option-list-control/options",
+      );
+      expect(documento_form.find((campo) => campo.name === "estado")?.component).toBe("input-status");
       const lectura_form = campos_de((await api(server, "GET", "/pages/vehiculos.lectura-uso")).json);
       expect(lectura_form.find((campo) => campo.name === "tipo")?.component).toBe("input-radio-buttons");
+      expect(lectura_form.find((campo) => campo.name === "tipo")?.options?.length).toBeGreaterThan(0);
       const servicio_form = campos_de((await api(server, "GET", "/pages/vehiculos.servicio-programado")).json);
       expect(servicio_form.find((campo) => campo.name === "tipo_lectura")?.component).toBe("input-radio-buttons");
-      expect(servicio_form.find((campo) => campo.name === "estado")?.component).toBe("input-radio-buttons");
+      expect(servicio_form.find((campo) => campo.name === "tipo_lectura")?.options?.length).toBeGreaterThan(0);
+      expect(servicio_form.find((campo) => campo.name === "estado")?.component).toBe("input-status");
+      expect(servicio_form.find((campo) => campo.name === "estado")?.options).toBeUndefined();
       expect(servicio_form.some((campo) => campo.name === "vehicle_id")).toBe(true);
 
       const falla = await api(server, "POST", "/falla", {

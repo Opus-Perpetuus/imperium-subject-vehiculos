@@ -21,6 +21,7 @@ import {
   type PartidaRevision,
 } from "../../control.ts";
 import { API, definir_recurso, define_routes } from "../../recurso.ts";
+import { general_option_list_options_source } from "../../general-option-seeds.ts";
 
 type ModoEnvio = "interno" | "publico";
 
@@ -164,10 +165,11 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     component: "input-radio-buttons",
     label: "Modo",
     required: true,
-    options: [
-      { value: "interno", label: "Interna (usuario Imperium)" },
-      { value: "publico", label: "Pública (enlace para firmar)" },
-    ],
+    // Opciones: general-option-list-control (seed en general-option-seeds.ts).
+    optionsSource: general_option_list_options_source(
+      "subject-vehiculos/envio-revision",
+      "modo",
+    ),
     help: "Interna: eliges quién revisa. Pública: compartes la URL y firman una vez el grupo.",
   },
   {
@@ -200,9 +202,10 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
   },
   {
     name: "estado",
-    component: "input-text",
+    component: "input-status",
     label: "Estado",
     read_only: true,
+    // Opciones: status-option-control (seed en status-seeds.ts).
   },
   {
     name: "share_hint",
