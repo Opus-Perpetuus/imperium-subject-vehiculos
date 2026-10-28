@@ -22,6 +22,10 @@ export const FEATURE_SHELL_FIELD_COMPONENTS = [
   "input-json",
   /** Número → `real` / `integer`. */
   "input-number",
+  /** Número que también acepta operaciones («2*3+1»); guarda el resultado → `real`. */
+  "input-operacion",
+  /** Código leído con cámara, foto, lector USB o a mano (`scanner`) → `text`. */
+  "input-scanner",
   /** Importe con formato de moneda → `real` / `numeric`. */
   "input-money",
   /** Texto con máscara (`mask`: RFC, CURP, CP, teléfono) → `text`. */
@@ -89,6 +93,43 @@ export const FEATURE_SHELL_FIELD_COMPONENTS = [
 export type FeatureShellFieldComponent =
   (typeof FEATURE_SHELL_FIELD_COMPONENTS)[number];
 
+export type FeatureShellScannerAction = {
+  kind: "guardar_en" | "abrir_plantilla" | "abrir_valor" | "buscar_registro";
+  target?: string;
+  gs1_ai?: string;
+  template?: string;
+  path?: string;
+  new_tab?: boolean;
+  confirm?: boolean;
+};
+
+/** Espejo de `ScannerConfig` del input «scanner» del frontend. */
+export type FeatureShellScannerConfig = {
+  formats?: string[];
+  actions?: FeatureShellScannerAction[];
+  continuous?: boolean;
+  multiple?: boolean;
+  separator?: string;
+  duplicate_ms?: number;
+  unique?: boolean;
+  beep?: boolean;
+  vibrate?: boolean;
+  strip_prefix?: string;
+  strip_suffix?: string;
+  transform?: "ninguna" | "mayusculas" | "minusculas" | "sin_espacios";
+  pattern?: string;
+  pattern_message?: string;
+  min_length?: number;
+  max_length?: number;
+  check_digit?: boolean;
+  gs1?: boolean;
+  history?: boolean;
+  history_size?: number;
+  allow_manual?: boolean;
+  allow_image?: boolean;
+  front_camera?: boolean;
+};
+
 export type FeatureShellFieldOption = {
   value: string | number | boolean;
   label: string;
@@ -133,12 +174,22 @@ export type FeatureShellFieldDescriptor = {
   type?: "text" | "email" | "search" | "url" | "tel";
   /** Opciones fijas de los tipos de selección. */
   options?: FeatureShellFieldOption[];
-  /** Opciones desde el API (`api://…?as=options` → `{ value, label }[]`). */
+  /**
+   * Opciones desde el API (`api://…?as=options` → `{ value, label }[]`).
+   * Un campo que no es estatus usa `general_option_list_options_source`.
+   * El estatus es `input-status` (status-option-control), no esta URL.
+   */
   optionsSource?: string;
   /** `input-number` / `input-money`. */
   min?: number;
   max?: number;
   step?: number;
+  /** `input-number` / `input-operacion`: decimales del resultado. */
+  decimals?: number;
+  /** `input-number` / `input-operacion`: teclado de calculadora en pantalla. */
+  show_calculator?: boolean;
+  /** `input-scanner`: formatos, limpieza, validación, GS1 y acciones tras leer. */
+  scanner?: FeatureShellScannerConfig;
   /** `input-mask`: patrón de ngx-mask (`0` dígito, `S` letra, `A` alfanumérico). */
   mask?: string;
   /** `input-money` / `input-mask`: admite negativos. */

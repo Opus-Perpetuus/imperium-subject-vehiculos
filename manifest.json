@@ -1,6 +1,4 @@
 {
-  "$schema": "https://schemas.opus-perpetuus.dev/imperium/kirlet-manifest/1.0.json",
-  "manifestVersion": 1,
   "id": "SUBJECT-vehiculos",
   "technicalId": "subject-vehiculos",
   "name": "Vehículos",
@@ -235,23 +233,7 @@
     {
       "id": "vehiculos.vehicle",
       "path": "padron-vehiculos",
-      "permission": "subject.vehiculos.vehicle.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "vehicle",
-        "icon": "fa-bus",
-        "listHeaders": {
-          "es": {
-            "placas": "Placas",
-            "name": "Nombre",
-            "numero_economico": "Número económico",
-            "marca": "Marca",
-            "modelo": "Modelo",
-            "chofer_nombre": "Chofer",
-            "estado_operativo": "Estado"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.vehicle.read"
     },
     {
       "id": "vehiculos.reporte-flota",
@@ -261,169 +243,47 @@
     {
       "id": "vehiculos.plantilla-revision",
       "path": "plantilla-revision",
-      "permission": "subject.vehiculos.plantilla-revision.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "plantilla-revision",
-        "icon": "fa-list-check",
-        "listHeaders": {
-          "es": {
-            "name": "Nombre",
-            "description": "Descripción"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.plantilla-revision.read"
     },
     {
       "id": "vehiculos.bitacora",
       "path": "bitacora",
-      "permission": "subject.vehiculos.bitacora.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "bitacora",
-        "icon": "fa-book-open",
-        "listHeaders": {
-          "es": {
-            "fecha": "Fecha",
-            "name": "Título",
-            "vehiculo": "Vehículo",
-            "revisada": "Revisada"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.bitacora.read"
     },
     {
       "id": "vehiculos.envio-revision",
       "path": "envio-revision",
-      "permission": "subject.vehiculos.envio-revision.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "envio-revision",
-        "icon": "fa-file-signature",
-        "listHeaders": {
-          "es": {
-            "name": "Título",
-            "modo": "Modo",
-            "usuario_nombre": "Revisor",
-            "estado": "Estado",
-            "firmado_at": "Firmado"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.envio-revision.read"
     },
     {
       "id": "vehiculos.falla",
       "path": "falla",
-      "permission": "subject.vehiculos.falla.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "falla",
-        "icon": "fa-triangle-exclamation",
-        "listHeaders": {
-          "es": {
-            "fecha": "Fecha",
-            "name": "Falla",
-            "vehiculo": "Vehículo",
-            "estado": "Estado",
-            "prioridad": "Prioridad"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.falla.read"
     },
     {
       "id": "vehiculos.mantenimiento-correctivo",
       "path": "mantenimiento-correctivo",
-      "permission": "subject.vehiculos.mantenimiento-correctivo.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "mantenimiento-correctivo",
-        "icon": "fa-wrench",
-        "listHeaders": {
-          "es": {
-            "fecha": "Fecha",
-            "name": "Trabajo",
-            "vehiculo": "Vehículo",
-            "estado": "Estado",
-            "costo": "Costo"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.mantenimiento-correctivo.read"
     },
     {
       "id": "vehiculos.mantenimiento-preventivo",
       "path": "mantenimiento-preventivo",
-      "permission": "subject.vehiculos.mantenimiento-preventivo.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "mantenimiento-preventivo",
-        "icon": "fa-shield-halved",
-        "listHeaders": {
-          "es": {
-            "fecha": "Fecha",
-            "name": "Trabajo",
-            "vehiculo": "Vehículo",
-            "estado": "Estado"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.mantenimiento-preventivo.read"
     },
     {
       "id": "vehiculos.servicio-programado",
       "path": "servicio-programado",
-      "permission": "subject.vehiculos.servicio-programado.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "servicio-programado",
-        "icon": "fa-calendar-plus",
-        "listHeaders": {
-          "es": {
-            "name": "Servicio",
-            "vehiculo": "Vehículo",
-            "proxima_fecha": "Próxima fecha",
-            "proxima_lectura": "Próxima lectura",
-            "estado": "Estado"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.servicio-programado.read"
     },
     {
       "id": "vehiculos.recordatorios",
       "path": "recordatorios",
-      "permission": "subject.vehiculos.servicio-programado.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "servicio-programado/recordatorios",
-        "icon": "fa-bell",
-        "listOnly": true,
-        "listHeaders": {
-          "es": {
-            "estado": "Aviso",
-            "clase": "Clase",
-            "nombre": "Nombre",
-            "vehiculo": "Vehículo",
-            "proxima_fecha": "Fecha",
-            "motivo": "Motivo"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.servicio-programado.read"
     },
     {
       "id": "vehiculos.lectura-uso",
       "path": "lectura-uso",
-      "permission": "subject.vehiculos.lectura-uso.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "lectura-uso",
-        "icon": "fa-gauge-high",
-        "listHeaders": {
-          "es": {
-            "fecha": "Fecha",
-            "vehiculo": "Vehículo",
-            "tipo": "Tipo",
-            "valor": "Lectura"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.lectura-uso.read"
     },
     {
       "id": "vehiculos.carga-combustible",
@@ -433,21 +293,7 @@
     {
       "id": "vehiculos.documento-vehiculo",
       "path": "documento-vehiculo",
-      "permission": "subject.vehiculos.documento-vehiculo.read",
-      "leaf": {
-        "kind": "crud",
-        "appBase": "documento-vehiculo",
-        "icon": "fa-file-contract",
-        "listHeaders": {
-          "es": {
-            "name": "Documento",
-            "vehiculo": "Vehículo",
-            "tipo": "Tipo",
-            "fecha_vencimiento": "Vence",
-            "estado": "Estado"
-          }
-        }
-      }
+      "permission": "subject.vehiculos.documento-vehiculo.read"
     }
   ],
   "storage": {
