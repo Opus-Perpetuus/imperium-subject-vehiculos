@@ -37,7 +37,22 @@ jobs:
       - name: Commit y tag de release
         if: steps.release.outputs.released == 'true'
         run: |
+          set -euo pipefail
           VERSION="${{ steps.release.outputs.version }}"
+          SRC_SHA="$(git rev-parse HEAD)"
+          git fetch --tags --force origin
+          if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
+            TAG_SHA="$(git rev-parse "v$VERSION^{commit}")"
+            # Reintento: el tag puede apuntar al release cuyo primer padre es este SHA.
+            PARENT="$(git rev-parse --verify "$TAG_SHA^1" 2>/dev/null || true)"
+            if [ "$TAG_SHA" = "$SRC_SHA" ] || [ "$PARENT" = "$SRC_SHA" ]; then
+              echo "v$VERSION ya existe para este commit fuente ($SRC_SHA); se omite commit, tag y push."
+              echo "v$VERSION ya existe para este commit fuente ($SRC_SHA); se omite commit, tag y push." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::El tag v$VERSION ya existe en $TAG_SHA, pero esta corrida libera $SRC_SHA" >&2
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -66,3 +81,5 @@ jobs:
             -t ghcr.io/opus-perpetuus/subject-vehiculos:latest \
             --push \
             .
+      # Notify n8n / pin de catálogo RETIRADO (2026-10-27):
+      # versiones de apps = discovery + app_registry.installed_tag (100% dinámico).
