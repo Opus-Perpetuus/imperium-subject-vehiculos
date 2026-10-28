@@ -2,6 +2,7 @@ import {
   build_feature_shell_page,
   type KirletPageDecl,
 } from "@opus-perpetuus/imperium-core-kit";
+import { leaf_for } from "../../page-leaves.ts";
 import { general_option_list_options_source } from "../../general-option-seeds.ts";
 
 const API = "api://m/subject-vehiculos";
@@ -11,6 +12,7 @@ export const vehicle_pages: KirletPageDecl[] = [
     id: "vehiculos.vehicle",
     path: "padron-vehiculos",
     permission: "subject.vehiculos.vehicle.read",
+    leaf: leaf_for("vehiculos.vehicle"),
     build: () =>
       build_feature_shell_page({
         id: "vehiculos.vehicle",

@@ -16,6 +16,7 @@ import {
   type KirletRouteTable,
 } from "@opus-perpetuus/imperium-core-kit";
 import { etiqueta_vehiculo, numero } from "./control.ts";
+import { leaf_for } from "./page-leaves.ts";
 
 /** Un costo capturado es un número igual o mayor que cero; vacío se queda vacío. */
 export function costo_valido(row: Record<string, unknown>): void {
@@ -253,6 +254,7 @@ export function pagina_lista(opts: {
     id: opts.id,
     path: opts.path,
     permission,
+    ...(leaf_for(opts.id) ? { leaf: leaf_for(opts.id) } : {}),
     build: () =>
       build_feature_shell_page({
         id: opts.id,
