@@ -92,6 +92,15 @@ function motivo(o: Ocupada, nombre: string): string {
     : `«${nombre}» ya está en el envío pendiente «${o.envio_nombre}»`;
 }
 
+/** Qué hacer: un envío pendiente se puede cancelar; uno firmado ya no. */
+function pista(estados: readonly string[]): string {
+  const pendientes = estados.filter((e) => e !== "firmado").length;
+  if (!pendientes) return "Ya están revisadas; no hace falta enviarlas otra vez.";
+  return pendientes === 1
+    ? "Cancela el envío pendiente si quieres mandarla de nuevo."
+    : "Cancela los envíos pendientes si quieres mandarlas de nuevo.";
+}
+
 async function nombres(ctx: KirletCtx, ids: readonly string[]): Promise<Map<string, string>> {
   if (!ids.length) return new Map();
   const filas = await ctx.data.findMany("bitacora", { where: { id: { in: [...ids] } }, limit: ids.length });
@@ -111,7 +120,7 @@ export async function exigir_sin_duplicados(
   throw new KirletHttpError(
     409,
     "conflict",
-    `No se reenvía: ${detalle.join("; ")}. Cancela ese envío si quieres mandarla de nuevo.`,
+    `No se reenvía: ${detalle.join("; ")}. ${pista([...ocupadas.values()].map((o) => o.estado))}`,
   );
 }
 
@@ -140,6 +149,7 @@ export async function crear_envio(
   const omitidas: Omitida[] = [];
   if (opts.omitir_ocupadas) {
     const ocupadas = await bitacoras_ocupadas(ctx, ids);
+    const estados = [...ocupadas.values()].map((o) => o.estado);
     for (const [id, o] of ocupadas) {
       const name = String(vivas.get(id)?.name ?? id);
       omitidas.push({ id, name, motivo: motivo(o, name) });
@@ -149,7 +159,7 @@ export async function crear_envio(
       throw new KirletHttpError(
         409,
         "conflict",
-        `Ninguna bitácora se envió: ${omitidas.map((o) => o.motivo).join("; ")}. Cancela esos envíos si quieres mandarlas de nuevo.`,
+        `Ninguna bitácora se envió: ${omitidas.map((o) => o.motivo).join("; ")}. ${pista(estados)}`,
       );
     }
   } else {

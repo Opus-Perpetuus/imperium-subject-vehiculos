@@ -434,6 +434,11 @@ describe("envíos masivos, duplicados y cancelación", () => {
       expect(de_nuevo.status).toBe(201);
       expect(de_nuevo.json.data.bitacora_ids).toEqual([a, b]);
       expect(String(de_nuevo.json.mensaje)).toContain("ya fue revisada");
+
+      const individual = await api(server, "POST", `/bitacora/${c}/enviar-revision-publica`, {});
+      expect(individual.status).toBe(409);
+      expect(String(individual.json.message)).toContain("no hace falta enviarlas otra vez");
+      expect(String(individual.json.message)).not.toContain("Cancela");
     } finally {
       server.stop();
     }
