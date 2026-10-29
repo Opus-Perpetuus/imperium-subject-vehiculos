@@ -255,7 +255,28 @@
     {
       "id": "vehiculos.reporte-flota",
       "path": "costos-flota",
-      "permission": "subject.vehiculos.vehicle.read"
+      "permission": "subject.vehiculos.vehicle.read",
+      "leaf": {
+        "kind": "crud",
+        "appBase": "vehicle/reporte-costos",
+        "icon": "fa-coins",
+        "listHeaders": {
+          "es": {
+            "vehiculo": "Vehículo",
+            "costo_total": "Costo total",
+            "costo_combustible": "Combustible",
+            "costo_correctivo": "Correctivo",
+            "costo_preventivo": "Preventivo",
+            "km_recorridos": "Km",
+            "costo_por_km": "Costo por km",
+            "rendimiento_km_l": "Km/l",
+            "fallas_abiertas": "Fallas abiertas",
+            "avisos_vencidos": "Vencidos"
+          }
+        },
+        "listOnly": true,
+        "permission": "subject.vehiculos.vehicle.read"
+      }
     },
     {
       "id": "vehiculos.plantilla-revision",
@@ -436,7 +457,23 @@
     {
       "id": "vehiculos.carga-combustible",
       "path": "carga-combustible",
-      "permission": "subject.vehiculos.carga-combustible.read"
+      "permission": "subject.vehiculos.carga-combustible.read",
+      "leaf": {
+        "kind": "crud",
+        "appBase": "carga-combustible",
+        "icon": "fa-gas-pump",
+        "listHeaders": {
+          "es": {
+            "fecha": "Fecha",
+            "vehiculo": "Vehículo",
+            "litros": "Litros",
+            "costo": "Costo",
+            "odometro": "Odómetro",
+            "rendimiento_km_l": "km/l"
+          }
+        },
+        "permission": "subject.vehiculos.carga-combustible.read"
+      }
     },
     {
       "id": "vehiculos.documento-vehiculo",
