@@ -233,6 +233,8 @@ export type RecursoSpec = {
   pages_extra?: KirletPageDecl[];
   menu_extra?: KirletMenuDecl[];
   acciones?: Accion[];
+  /** Acciones sobre las filas seleccionadas; reciben `{ ids }`. */
+  acciones_lista?: Accion[];
 };
 
 export function pagina_lista(opts: {
@@ -247,6 +249,7 @@ export function pagina_lista(opts: {
   columns: Columna[];
   fields?: FeatureShellFieldDescriptor[];
   acciones?: Accion[];
+  acciones_lista?: Accion[];
 }): KirletPageDecl {
   const permission = `subject.vehiculos.${opts.permissionResource}.read`;
   const base = `${API}/${opts.permissionResource}`;
@@ -294,17 +297,33 @@ export function pagina_lista(opts: {
             serverQuery: true,
           },
           ...(opts.fields ? { form: { fields: opts.fields } } : {}),
-          ...(opts.acciones
+          ...(opts.acciones || opts.acciones_lista
             ? {
                 headerActions: {
-                  detail: opts.acciones.map((action) => ({
-                    id: action.id,
-                    label: action.label,
-                    confirm: action.confirm,
-                    variant: "primary" as const,
-                    refresh: "record" as const,
-                    invoke: { method: action.method, action: action.action },
-                  })),
+                  ...(opts.acciones
+                    ? {
+                        detail: opts.acciones.map((action) => ({
+                          id: action.id,
+                          label: action.label,
+                          confirm: action.confirm,
+                          variant: "primary" as const,
+                          refresh: "record" as const,
+                          invoke: { method: action.method, action: action.action },
+                        })),
+                      }
+                    : {}),
+                  ...(opts.acciones_lista
+                    ? {
+                        list: opts.acciones_lista.map((action) => ({
+                          id: action.id,
+                          label: action.label,
+                          confirm: action.confirm,
+                          variant: "primary" as const,
+                          refresh: "list" as const,
+                          invoke: { method: action.method, action: action.action },
+                        })),
+                      }
+                    : {}),
                 },
               }
             : {}),
@@ -327,6 +346,7 @@ export function definir_recurso(spec: RecursoSpec): KirletModuleDef {
     columns: spec.list,
     fields: spec.form,
     acciones: spec.acciones,
+    acciones_lista: spec.acciones_lista,
   });
   const has_vehicle = spec.columns.some((column) => column.name === "vehicle_id");
   const columns = [

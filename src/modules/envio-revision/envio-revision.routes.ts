@@ -15,25 +15,22 @@ import {
   normalizar_visitas,
   ordenar_partidas_alarma,
   partida_en_alarma,
-  ruta_detalle_envio,
+  ruta_publica_envio,
   texto_visitas,
   visita_desde_headers,
   type PartidaRevision,
 } from "../../control.ts";
 import { API, definir_recurso, define_routes } from "../../recurso.ts";
+import {
+  cancelar_envios,
+  compartir_envio,
+  exigir_sin_duplicados,
+  ids_de,
+  ids_del_cuerpo,
+  mensaje_cancelar,
+  type ModoEnvio,
+} from "../../envios.ts";
 import { general_option_list_options_source } from "../../general-option-seeds.ts";
-
-type ModoEnvio = "interno" | "publico";
-
-function ids_de(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((id) => String(id ?? "").trim()).filter(Boolean))];
-  }
-  if (typeof value === "string") {
-    return [...new Set(value.split(/[\s,]+/).map((id) => id.trim()).filter(Boolean))];
-  }
-  return [];
-}
 
 async function bitacoras_de(ctx: KirletCtx, ids: string[]): Promise<DomainRow[]> {
   if (!ids.length) throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora");
@@ -103,7 +100,8 @@ async function vista_envio(
   const base = {
     ...envio,
     bitacoras,
-    ruta_compartir: ruta_detalle_envio(envio.id, envio.name),
+    ruta_compartir: compartir_envio(envio).ruta,
+    compartir: compartir_envio(envio),
   };
   if (!opts.incluir_visitas) {
     const publico = { ...base } as Record<string, unknown>;
@@ -126,6 +124,9 @@ async function firmar_envio(
 ): Promise<DomainRow> {
   if (envio.estado === "firmado") {
     throw new KirletHttpError(409, "conflict", "este envío ya está firmado");
+  }
+  if (envio.estado === "cancelado") {
+    throw new KirletHttpError(409, "conflict", "este envío fue cancelado; pide uno nuevo");
   }
   if (!firma.trim()) {
     throw new KirletHttpError(400, "validation_error", "falta la firma");
@@ -210,10 +211,10 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
   {
     name: "share_hint",
     component: "input-text",
-    label: "Ruta para Compartir",
+    label: "Enlace del envío",
     column_span: "full",
     read_only: true,
-    help: "En modo público: abre este envío y pulsa Compartir en el encabezado. El enlace público muestra las bitácoras y permite firmar el grupo una vez.",
+    help: "Público: cualquiera con el enlace ve las bitácoras y firma el grupo una vez, sin sesión. Interno: lleva al detalle y pide sesión. Mándalo con el botón de WhatsApp.",
   },
   {
     name: "visitas_texto",
@@ -264,7 +265,23 @@ export const envio_revision_module = definir_recurso({
     { key: "firmado_at", label: "Firmado" },
   ],
   form: CAMPOS_FORM,
+  acciones_lista: [
+    {
+      id: "cancelar-envios",
+      label: "Cancelar envíos",
+      confirm: "Se cancelan los envíos pendientes seleccionados. Los firmados no cambian.",
+      method: "POST",
+      action: `${API}/envio-revision/cancelar`,
+    },
+  ],
   acciones: [
+    {
+      id: "cancelar-envio",
+      label: "Cancelar envío",
+      confirm: "El enlace deja de aceptar firma y sus bitácoras se pueden volver a enviar.",
+      method: "POST",
+      action: `${API}/envio-revision/:id/cancelar`,
+    },
     {
       id: "firmar-envio",
       label: "Firmar revisión",
@@ -311,6 +328,20 @@ export const envio_revision_module = definir_recurso({
         return { data: await vista_envio(ctx, actualizado) };
       },
     },
+    "POST /envio-revision/cancelar": async (ctx) => {
+      const { ids } = await ids_del_cuerpo(ctx);
+      const r = await cancelar_envios(ctx, ids);
+      return { data: r, mensaje: mensaje_cancelar(r) };
+    },
+    "POST /envio-revision/:id/cancelar": async (ctx) => {
+      const envio = await ctx.data.findOne("envio_revision", { id: ctx.params.id });
+      if (!envio || envio.is_active === false) return ctx.not_found();
+      const r = await cancelar_envios(ctx, [String(envio.id)]);
+      if (!r.cancelados.length) {
+        throw new KirletHttpError(409, "conflict", r.omitidos[0]?.motivo ?? "no se pudo cancelar");
+      }
+      return { data: r, mensaje: "Envío cancelado. Sus bitácoras ya se pueden volver a enviar." };
+    },
     "GET /envio-revision/:id": async (ctx) => {
       const envio = await ctx.data.findOne("envio_revision", { id: ctx.params.id });
       if (!envio || envio.is_active === false) return ctx.not_found();
@@ -332,6 +363,7 @@ export const envio_revision_module = definir_recurso({
     async before_create(ctx, row) {
       const ids = ids_de(row.bitacora_ids);
       await bitacoras_de(ctx, ids);
+      await exigir_sin_duplicados(ctx, ids);
       row.bitacora_ids = ids;
       const modo = String(row.modo ?? "").trim() as ModoEnvio;
       if (modo !== "interno" && modo !== "publico") {
@@ -359,7 +391,7 @@ export const envio_revision_module = definir_recurso({
     },
     async after_create(ctx, row) {
       if (String(row.modo) === "publico") {
-        const hint = ruta_detalle_envio(row.id, row.name);
+        const hint = ruta_publica_envio(row.id);
         await ctx.data.update(
           "envio_revision",
           { id: String(row.id) },
@@ -375,7 +407,16 @@ export const envio_revision_module = definir_recurso({
       if ("bitacora_ids" in row) {
         const ids = ids_de(row.bitacora_ids);
         await bitacoras_de(ctx, ids);
+        const estado = String(row.estado ?? existing.estado ?? "pendiente");
+        if (estado !== "cancelado") await exigir_sin_duplicados(ctx, ids, String(existing.id));
         row.bitacora_ids = ids;
+      } else if (
+        String(existing.estado ?? "") === "cancelado" &&
+        "estado" in row &&
+        String(row.estado ?? "") !== "cancelado"
+      ) {
+        // Reactivar un cancelado vuelve a retener sus bitácoras.
+        await exigir_sin_duplicados(ctx, ids_de(existing.bitacora_ids), String(existing.id));
       }
       const modo = String(row.modo ?? existing.modo ?? "").trim();
       if (modo === "interno" && "usuario_id" in row) {
@@ -385,7 +426,7 @@ export const envio_revision_module = definir_recurso({
         }
       }
       if (modo === "publico") {
-        row.share_hint = ruta_detalle_envio(existing.id, row.name ?? existing.name);
+        row.share_hint = ruta_publica_envio(existing.id);
       }
       return row;
     },

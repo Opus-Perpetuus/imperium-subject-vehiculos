@@ -719,9 +719,18 @@ export function slug_ruta(name: unknown): string {
   return normalized || "no-name";
 }
 
-/** Ruta interna del detalle de un envío (para Compartir). */
+/** Ruta interna del detalle de un envío (pide sesión: revisión interna). */
 export function ruta_detalle_envio(id: unknown, name: unknown = ""): string {
   return `/internal/envio-revision/detail/${slug_ruta(name)}/${String(id ?? "").trim()}`;
+}
+
+/**
+ * Página pública de firma, sin sesión. El detalle `/internal/...` pide login y
+ * la hoja `envio-revision` solo existe para quien tiene sesión, así que una
+ * liga pública hacia allá acababa en el login o en el 404 del SPA.
+ */
+export function ruta_publica_envio(id: unknown): string {
+  return `/revision-publica/${encodeURIComponent(String(id ?? "").trim())}`;
 }
 
 export function ordenar_partidas_alarma(

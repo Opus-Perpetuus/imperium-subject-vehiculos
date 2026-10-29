@@ -46,6 +46,7 @@ export const SERVICIO_ESTADO_OPTIONS: StatusOption[] = [
 export const ENVIO_REVISION_ESTADO_OPTIONS: StatusOption[] = [
   { value: "pendiente", label: "Pendiente", color: "#ffc107", icon: "fas fa-hourglass-half" },
   { value: "firmado", label: "Firmado", color: "#198754", icon: "fas fa-signature" },
+  { value: "cancelado", label: "Cancelado", color: "#6c757d", icon: "fas fa-ban" },
 ];
 
 export const STATUS_OPTION_SEEDS: StatusOptionSeed[] = [

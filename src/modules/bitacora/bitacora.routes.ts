@@ -23,9 +23,17 @@ import {
   quitar_ranuras,
   RANURAS_REVISION,
   type PartidaRevision,
-  ruta_detalle_envio,
   ordenar_partidas_alarma,
 } from "../../control.ts";
+import {
+  cancelar_envios,
+  crear_envio,
+  envios_pendientes_de,
+  ids_de,
+  ids_del_cuerpo,
+  mensaje_cancelar,
+  respuesta_creado,
+} from "../../envios.ts";
 import { API, VEHICULO, definir_recurso, define_routes } from "../../recurso.ts";
 
 // El formulario ya no pinta ranuras. Siguen declaradas porque el kit rechaza,
@@ -163,6 +171,29 @@ export const bitacora_module = definir_recurso({
       help: "Queda revisada solo con la firma de quien revisa.",
     },
   ],
+  acciones_lista: [
+    {
+      id: "enviar-revision-publica-masivo",
+      label: "Enviar a revisión pública",
+      confirm: "Se crea un envío público con las bitácoras seleccionadas. Las que ya tengan un envío vigente se saltan.",
+      method: "POST",
+      action: `${API}/bitacora/enviar-revision-publica`,
+    },
+    {
+      id: "enviar-revision-interna-masivo",
+      label: "Enviar a revisión interna",
+      confirm: "Se crea un envío interno con las bitácoras seleccionadas. Las que ya tengan un envío vigente se saltan.",
+      method: "POST",
+      action: `${API}/bitacora/enviar-revision-interna`,
+    },
+    {
+      id: "cancelar-envios-masivo",
+      label: "Cancelar envíos a revisión",
+      confirm: "Se cancelan los envíos pendientes de las bitácoras seleccionadas.",
+      method: "POST",
+      action: `${API}/bitacora/cancelar-envios`,
+    },
+  ],
   acciones: [
     {
       id: "reportar-falla",
@@ -174,14 +205,14 @@ export const bitacora_module = definir_recurso({
     {
       id: "enviar-revision-interna",
       label: "Enviar a revisión interna",
-      confirm: "Se crea un envío interno con esta bitácora. Luego ábrelo en Envíos a revisión para elegir revisor (si aún no tiene) y firmar.",
+      confirm: "Se crea un envío interno con esta bitácora (si ya tiene un envío vigente, no se duplica). Luego elige revisor en Envíos a revisión.",
       method: "POST",
       action: `${API}/bitacora/:id/enviar-revision-interna`,
     },
     {
       id: "enviar-revision-publica",
       label: "Enviar a revisión pública",
-      confirm: "Se crea un envío público. Ábrelo en Envíos a revisión y pulsa Compartir para mandar el enlace de firma.",
+      confirm: "Se crea un envío público con enlace de firma sin sesión (si ya tiene un envío vigente, no se duplica).",
       method: "POST",
       action: `${API}/bitacora/:id/enviar-revision-publica`,
     },
@@ -204,98 +235,105 @@ export const bitacora_module = definir_recurso({
 
 
     "POST /bitacora/enviar-revision": async (ctx) => {
-      const body = (await ctx.body<Record<string, unknown>>()) ?? {};
-      const raw = body.bitacora_ids ?? body.ids ?? body.bitacora_id;
-      const ids = Array.isArray(raw)
-        ? [...new Set(raw.map((id) => String(id ?? "").trim()).filter(Boolean))]
-        : typeof raw === "string"
-          ? [...new Set(raw.split(/[\s,]+/).map((id) => id.trim()).filter(Boolean))]
-          : [];
-      if (!ids.length) throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora");
-      for (const id of ids) {
-        const bitacora = await ctx.data.findOne("bitacora", { id });
-        if (!bitacora || bitacora.is_active === false) {
-          throw new KirletHttpError(400, "validation_error", `la bitácora ${id} no existe`);
-        }
-      }
+      const { ids, body } = await ids_del_cuerpo(ctx);
       const modo = String(body.modo ?? "").trim();
       if (modo !== "interno" && modo !== "publico") {
         throw new KirletHttpError(400, "validation_error", "el modo debe ser interno o publico");
       }
-      let usuario_id = "";
-      let usuario_nombre = "";
-      if (modo === "interno") {
-        usuario_id = String(body.usuario_id ?? "").trim();
-        if (!usuario_id) {
-          throw new KirletHttpError(400, "validation_error", "elige el usuario revisor");
-        }
-        usuario_nombre = String(body.usuario_nombre ?? usuario_id).trim();
+      const usuario_id = String(body.usuario_id ?? "").trim();
+      if (modo === "interno" && !usuario_id) {
+        throw new KirletHttpError(400, "validation_error", "elige el usuario revisor");
       }
-      const ts = now_iso();
-      const id = new_id("envio_revi");
-      const titulo =
-        String(body.name ?? "").trim() ||
-        (ids.length === 1 ? `Revisión de bitácora` : `Revisión de ${ids.length} bitácoras`);
-      const created = await ctx.data.insert("envio_revision", {
-        id,
-        name: titulo,
-        description: String(body.description ?? "").trim(),
+      const { envio, omitidas } = await crear_envio(ctx, {
+        ids,
         modo,
+        name: String(body.name ?? ""),
+        description: String(body.description ?? ""),
         usuario_id,
-        usuario_nombre,
-        bitacora_ids: ids,
-        firma: "",
-        firmado_at: "",
-        firmante: "",
-        estado: "pendiente",
-        share_hint: modo === "publico" ? ruta_detalle_envio(id, titulo) : "",
-        is_active: true,
-        created_at: ts,
-        updated_at: ts,
+        usuario_nombre: String(body.usuario_nombre ?? ""),
       });
       return ctx.json(
-        {
-          data: created,
-          mensaje:
-            modo === "publico"
-              ? "Envío listo. Abre Envíos a revisión y usa Compartir."
-              : `Envío asignado a ${usuario_nombre || usuario_id}.`,
-        },
+        respuesta_creado(
+          envio,
+          omitidas,
+          modo === "publico"
+            ? "Envío público listo."
+            : `Envío asignado a ${String(envio.usuario_nombre || usuario_id)}.`,
+        ),
         201,
       );
+    },
+    // Masivo desde la lista: un solo envío con todas las seleccionadas; las
+    // que ya tienen envío vigente se saltan y se avisa cuáles.
+    "POST /bitacora/enviar-revision-publica": async (ctx) => {
+      const { ids, body } = await ids_del_cuerpo(ctx);
+      const { envio, omitidas } = await crear_envio(ctx, {
+        ids,
+        modo: "publico",
+        name: String(body.name ?? ""),
+        omitir_ocupadas: true,
+      });
+      const n = ids_de(envio.bitacora_ids).length;
+      return ctx.json(
+        respuesta_creado(envio, omitidas, `Envío público listo con ${n === 1 ? "1 bitácora" : `${n} bitácoras`}.`),
+        201,
+      );
+    },
+    "POST /bitacora/enviar-revision-interna": async (ctx) => {
+      const { ids, body } = await ids_del_cuerpo(ctx);
+      const usuario_id = String(body.usuario_id ?? "").trim();
+      const { envio, omitidas } = await crear_envio(ctx, {
+        ids,
+        modo: "interno",
+        name: String(body.name ?? ""),
+        usuario_id,
+        usuario_nombre: String(body.usuario_nombre ?? ""),
+        omitir_ocupadas: true,
+      });
+      const n = ids_de(envio.bitacora_ids).length;
+      const cuantas = n === 1 ? "1 bitácora" : `${n} bitácoras`;
+      return ctx.json(
+        respuesta_creado(
+          envio,
+          omitidas,
+          usuario_id
+            ? `Envío interno con ${cuantas} asignado a ${String(envio.usuario_nombre || usuario_id)}.`
+            : `Envío interno creado con ${cuantas}. Ábrelo en Envíos a revisión y elige el revisor.`,
+        ),
+        201,
+      );
+    },
+    "POST /bitacora/cancelar-envios": async (ctx) => {
+      const { ids } = await ids_del_cuerpo(ctx);
+      if (!ids.length) throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora");
+      const envios = await envios_pendientes_de(ctx, ids);
+      if (!envios.length) {
+        return { data: { cancelados: [], omitidos: [] }, mensaje: "Ninguna de esas bitácoras tiene envío pendiente." };
+      }
+      const r = await cancelar_envios(ctx, envios);
+      return { data: r, mensaje: mensaje_cancelar(r) };
     },
     "POST /bitacora/:id/enviar-revision-interna": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!bitacora || bitacora.is_active === false) return ctx.not_found();
       const body = (await ctx.body<Record<string, unknown>>()) ?? {};
       const usuario_id = String(body.usuario_id ?? "").trim();
-      const ts = now_iso();
-      const id = new_id("envio_revi");
-      const titulo = String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim();
-      const created = await ctx.data.insert("envio_revision", {
-        id,
-        name: titulo,
-        description: String(body.description ?? "").trim(),
+      const { envio } = await crear_envio(ctx, {
+        ids: [String(bitacora.id)],
         modo: "interno",
+        name: String(body.name ?? ""),
+        description: String(body.description ?? ""),
         usuario_id,
-        usuario_nombre: String(body.usuario_nombre ?? usuario_id).trim(),
-        bitacora_ids: [String(bitacora.id)],
-        firma: "",
-        firmado_at: "",
-        firmante: "",
-        estado: "pendiente",
-        share_hint: "",
-        is_active: true,
-        created_at: ts,
-        updated_at: ts,
+        usuario_nombre: String(body.usuario_nombre ?? ""),
       });
       return ctx.json(
-        {
-          data: created,
-          mensaje: usuario_id
-            ? `Envío asignado a ${created.usuario_nombre || usuario_id}.`
+        respuesta_creado(
+          envio,
+          [],
+          usuario_id
+            ? `Envío asignado a ${String(envio.usuario_nombre || usuario_id)}.`
             : "Envío interno creado. Ábrelo en Envíos a revisión y elige el revisor.",
-        },
+        ),
         201,
       );
     },
@@ -303,32 +341,13 @@ export const bitacora_module = definir_recurso({
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!bitacora || bitacora.is_active === false) return ctx.not_found();
       const body = (await ctx.body<Record<string, unknown>>()) ?? {};
-      const ts = now_iso();
-      const id = new_id("envio_revi");
-      const created = await ctx.data.insert("envio_revision", {
-        id,
-        name: String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim(),
-        description: String(body.description ?? "").trim(),
+      const { envio } = await crear_envio(ctx, {
+        ids: [String(bitacora.id)],
         modo: "publico",
-        usuario_id: "",
-        usuario_nombre: "",
-        bitacora_ids: [String(bitacora.id)],
-        firma: "",
-        firmado_at: "",
-        firmante: "",
-        estado: "pendiente",
-        share_hint: ruta_detalle_envio(id, String(body.name ?? `Revisión: ${String(bitacora.name ?? id)}`).trim()),
-        is_active: true,
-        created_at: ts,
-        updated_at: ts,
+        name: String(body.name ?? ""),
+        description: String(body.description ?? ""),
       });
-      return ctx.json(
-        {
-          data: created,
-          mensaje: "Envío público listo. Ábrelo en Envíos a revisión y pulsa Compartir para el enlace de firma.",
-        },
-        201,
-      );
+      return ctx.json(respuesta_creado(envio, [], "Envío público listo. Mándalo por WhatsApp o copia el enlace."), 201);
     },
     "POST /bitacora/:id/reportar-falla": async (ctx) => {
       const bitacora = await ctx.data.findOne("bitacora", { id: ctx.params.id });
