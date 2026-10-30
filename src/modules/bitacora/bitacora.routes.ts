@@ -23,8 +23,16 @@ import {
   quitar_ranuras,
   RANURAS_REVISION,
   type PartidaRevision,
-  ordenar_partidas_alarma,
+  partidas_para_vista,
 } from "../../control.ts";
+import {
+  FIELDS_PROGRAMAR,
+  FORM_PROGRAMAR,
+  programados_de,
+  programar_desde_bitacora,
+  tomar_programacion,
+  type Programacion,
+} from "../../programar.ts";
 import {
   cancelar_envios,
   crear_envio,
@@ -70,6 +78,18 @@ function aplicar(patch: DomainRow, base?: DomainRow): DomainRow {
   // La casilla no manda: sin el trazo de quien revisa no queda revisada.
   next.revisada = bitacora_revisada(firma);
   return next;
+}
+
+// Lo pedido en `programar_*` se crea después de guardar la bitácora, ya con
+// sus partidas finales (para anotar las alarmas).
+const por_programar = new Map<string, Programacion>();
+
+async function programar_pendiente(ctx: KirletCtx, row: DomainRow): Promise<void> {
+  const id = String(row.id ?? "");
+  const p = por_programar.get(id);
+  if (!p) return;
+  por_programar.delete(id);
+  await programar_desde_bitacora(ctx, row, p);
 }
 
 function plantilla_distinta(patch: DomainRow, existing: DomainRow): boolean {
@@ -134,6 +154,8 @@ export const bitacora_module = definir_recurso({
     firma_realiza: { type: "string" },
     firma_revisa: { type: "string" },
     revisada: { type: "boolean" },
+    ...FIELDS_PROGRAMAR,
+    programados_texto: { type: "string" },
   },
   list: [
     { key: "fecha", label: "Fecha" },
@@ -170,6 +192,7 @@ export const bitacora_module = definir_recurso({
       read_only: true,
       help: "Queda revisada solo con la firma de quien revisa.",
     },
+    ...FORM_PROGRAMAR,
   ],
   acciones_lista: [
     {
@@ -228,9 +251,10 @@ export const bitacora_module = definir_recurso({
     "GET /bitacora/:id": async (ctx) => {
       const row = await ctx.data.findOne("bitacora", { id: ctx.params.id });
       if (!row || row.is_active === false) return ctx.not_found();
+      const programados_texto = await programados_de(ctx, String(row.id));
       const items = normalizar_items(row.items);
-      if (es_error(items)) return { data: { ...row, items: row.items } };
-      return { data: { ...row, items: ordenar_partidas_alarma(items) } };
+      if (es_error(items)) return { data: { ...row, items: row.items, programados_texto } };
+      return { data: { ...row, items: partidas_para_vista(items), programados_texto } };
     },
 
 
@@ -410,6 +434,13 @@ export const bitacora_module = definir_recurso({
   }),
   hooks: {
     async before_create(ctx, row) {
+      const programacion = tomar_programacion(row);
+      if (programacion) {
+        if (!String(row.vehicle_id ?? "").trim()) {
+          throw new KirletHttpError(400, "validation_error", "elige el vehículo para programar");
+        }
+        por_programar.set(String(row.id), programacion);
+      }
       const capturadas = filas_desde_ranuras(row);
       quitar_ranuras(row);
       if (!row.fecha) row.fecha = today_iso();
@@ -427,7 +458,16 @@ export const bitacora_module = definir_recurso({
       if (row.imagenes == null) row.imagenes = [];
       return aplicar(row);
     },
+    async after_create(ctx, row) {
+      await programar_pendiente(ctx, row);
+    },
+    async after_update(ctx, row) {
+      await programar_pendiente(ctx, row);
+    },
     async before_update(ctx, _id, patch, existing) {
+      por_programar.delete(String(existing.id));
+      const programacion = tomar_programacion(patch);
+      if (programacion) por_programar.set(String(existing.id), programacion);
       const capturadas = filas_desde_ranuras(patch, existing.items);
       quitar_ranuras(patch);
       let enviadas: unknown = patch.items;

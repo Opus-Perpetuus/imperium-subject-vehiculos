@@ -5,7 +5,28 @@ export type OpcionPartida = {
   label: string;
   /** Si la opción elegida es de alarma, la partida sube al firmar. */
   alarma?: boolean;
+  /** Color de la partida cuando este es el resultado (`#rrggbb`). Vacío: el de fábrica. */
+  color?: string;
 };
+
+/** De fábrica: verde para «pasa», rojo para «no pasa»; lo demás sin color. */
+export const COLOR_PASA = "#198754";
+export const COLOR_NO_PASA = "#dc3545";
+const VALORES_NO_PASA = new Set(["falla", "no_pasa", "nopasa", "no-pasa", "no pasa", "rechazado", "rechaza"]);
+
+export function color_valido(value: unknown): string | null {
+  const texto = String(value ?? "").trim();
+  return /^#[0-9a-f]{6}$/i.test(texto) ? texto.toLowerCase() : null;
+}
+
+export function color_de_opcion(opcion: Pick<OpcionPartida, "value" | "color">): string {
+  const propio = color_valido(opcion.color);
+  if (propio) return propio;
+  const valor = String(opcion.value ?? "").trim().toLowerCase();
+  if (valor === "pasa" || valor === "si_pasa" || valor === "aprobado") return COLOR_PASA;
+  if (VALORES_NO_PASA.has(valor)) return COLOR_NO_PASA;
+  return "";
+}
 
 export const OPCIONES_REVISION: OpcionPartida[] = [
   { value: "pasa", label: "Pasa" },
@@ -129,6 +150,8 @@ function clonar_opciones(opciones: readonly OpcionPartida[]): OpcionPartida[] {
   return opciones.map((opcion) => {
     const copia: OpcionPartida = { value: opcion.value, label: opcion.label };
     if (opcion.alarma) copia.alarma = true;
+    const color = color_valido(opcion.color);
+    if (color) copia.color = color;
     return copia;
   });
 }
@@ -162,6 +185,11 @@ function leer_opciones(
       const entrada: OpcionPartida = { value, label };
       if (opcion.alarma === true || opcion.alarma === "true" || opcion.alarma === 1) {
         entrada.alarma = true;
+      }
+      if (opcion.color != null && String(opcion.color).trim() !== "") {
+        const color = color_valido(opcion.color);
+        if (!color) return { error: "el color de una opción va como #rrggbb" };
+        entrada.color = color;
       }
       opciones.push(entrada);
     }
@@ -703,10 +731,18 @@ export function llenar_partidas(
   return items;
 }
 
+/** Color de la partida según su resultado (el de la opción o el de fábrica). */
+export function color_partida(partida: PartidaRevision): string {
+  const resultado = String(partida.resultado ?? "");
+  if (!resultado) return "";
+  const opcion = (partida.opciones ?? []).find((o) => o.value === resultado);
+  return color_de_opcion(opcion ?? { value: resultado, label: resultado });
+}
+
 /** La partida está en alarma si se forzó o si el resultado es una opción marcada. */
 export function partida_en_alarma(partida: PartidaRevision): boolean {
   if (partida.alarma_forzada) return true;
-  return partida.opciones.some((opcion) => opcion.value === partida.resultado && !!opcion.alarma);
+  return (partida.opciones ?? []).some((opcion) => opcion.value === partida.resultado && !!opcion.alarma);
 }
 
 /** Alarmas primero; el resto conserva el orden relativo. */
@@ -742,6 +778,17 @@ export function ordenar_partidas_alarma(
     (partida_en_alarma(partida) ? alarmas : resto).push({ ...partida, opciones: clonar_opciones(partida.opciones) });
   }
   return [...alarmas, ...resto];
+}
+
+export type PartidaVista = PartidaRevision & { color: string; en_alarma: boolean };
+
+/** Alarmas arriba, con el color de su resultado y la marca de alarma para pintar. */
+export function partidas_para_vista(partidas: readonly PartidaRevision[]): PartidaVista[] {
+  return ordenar_partidas_alarma(partidas).map((p) => ({
+    ...p,
+    color: color_partida(p),
+    en_alarma: partida_en_alarma(p),
+  }));
 }
 
 /**

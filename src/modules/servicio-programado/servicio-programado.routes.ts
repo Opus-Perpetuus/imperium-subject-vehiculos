@@ -67,6 +67,7 @@ export const servicio_programado_module = definir_recurso({
     { name: "ultima_fecha", type: "text" },
     { name: "ultima_lectura", type: "real" },
     { name: "trabajo_realizado", type: "text" },
+    { name: "bitacora_id", type: "text" },
   ],
   fields: {
     vehicle_id: { type: "string", required: true, search: true },
@@ -81,6 +82,7 @@ export const servicio_programado_module = definir_recurso({
     ultima_fecha: { type: "string" },
     ultima_lectura: { type: "number" },
     trabajo_realizado: { type: "string", search: true },
+    bitacora_id: { type: "string", search: true },
   },
   list: [
     { key: "name", label: "Servicio" },

@@ -13,8 +13,8 @@ import {
   normalizar_imagenes,
   normalizar_items,
   normalizar_visitas,
-  ordenar_partidas_alarma,
   partida_en_alarma,
+  partidas_para_vista,
   ruta_publica_envio,
   texto_visitas,
   visita_desde_headers,
@@ -25,33 +25,54 @@ import {
   cancelar_envios,
   compartir_envio,
   exigir_sin_duplicados,
+  exigir_sin_firma,
   ids_de,
   ids_del_cuerpo,
+  INFO_TIPO,
   mensaje_cancelar,
+  registros_de,
+  resumen_envio,
   type ModoEnvio,
+  type TipoFirma,
 } from "../../envios.ts";
+import { estado_reparacion } from "../../autorizacion.ts";
 import { general_option_list_options_source } from "../../general-option-seeds.ts";
 
-async function bitacoras_de(ctx: KirletCtx, ids: string[]): Promise<DomainRow[]> {
-  if (!ids.length) throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora");
-  const filas = await ctx.data.findMany("bitacora", {
-    where: { id: { in: ids } },
-    limit: ids.length,
-  });
-  const por_id = new Map(filas.filter((f) => f.is_active !== false).map((f) => [String(f.id), f]));
-  const ordenadas: DomainRow[] = [];
-  for (const id of ids) {
-    const fila = por_id.get(id);
-    if (!fila) throw new KirletHttpError(400, "validation_error", `la bitácora ${id} no existe`);
-    ordenadas.push(fila);
+function bitacoras_de(ctx: KirletCtx, ids: string[]): Promise<DomainRow[]> {
+  return registros_de(ctx, "bitacora", ids);
+}
+
+/** Ids por tipo de un envío (o de un cambio, cayendo en lo ya guardado). */
+function ids_envio(row: DomainRow, existing?: DomainRow): Record<TipoFirma, string[]> {
+  const de = (tipo: TipoFirma) => {
+    const campo = INFO_TIPO[tipo].campo;
+    return ids_de(campo in row ? row[campo] : existing?.[campo]);
+  };
+  return { bitacora: de("bitacora"), reparacion: de("reparacion"), mantenimiento: de("mantenimiento") };
+}
+
+/** Valida existencia, firma previa y duplicados de todo lo que trae el envío. */
+async function validar_contenido(
+  ctx: KirletCtx,
+  ids: Record<TipoFirma, string[]>,
+  opts: { excluir_envio?: string; revisar_duplicados: boolean },
+): Promise<void> {
+  if (!ids.bitacora.length && !ids.reparacion.length && !ids.mantenimiento.length) {
+    throw new KirletHttpError(400, "validation_error", "elige al menos una bitácora, reparación o mantenimiento");
   }
-  return ordenadas;
+  for (const tipo of ["bitacora", "reparacion", "mantenimiento"] as const) {
+    if (!ids[tipo].length) continue;
+    const filas = await registros_de(ctx, tipo, ids[tipo]);
+    if (!opts.revisar_duplicados) continue;
+    if (!opts.excluir_envio) exigir_sin_firma(tipo, filas);
+    await exigir_sin_duplicados(ctx, ids[tipo], opts.excluir_envio, tipo);
+  }
 }
 
 function partidas_para_firma(items: unknown): PartidaRevision[] {
   const normalizadas = normalizar_items(items);
   if (es_error(normalizadas)) return [];
-  return ordenar_partidas_alarma(normalizadas);
+  return partidas_para_vista(normalizadas);
 }
 
 async function registrar_visita_publica(ctx: KirletCtx, envio: DomainRow): Promise<DomainRow> {
@@ -86,20 +107,58 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
   };
 }
 
+async function vista_trabajo(ctx: KirletCtx, tipo: "reparacion" | "mantenimiento", row: DomainRow) {
+  const unidad = await ctx.data.findOne("vehicle", { id: String(row.vehicle_id ?? "") });
+  const firma = String(row[INFO_TIPO[tipo].firma] ?? "");
+  return {
+    id: row.id,
+    tipo,
+    name: row.name,
+    fecha: row.fecha,
+    description: row.description ?? "",
+    trabajo_realizado: row.trabajo_realizado ?? "",
+    costo: row.costo ?? null,
+    estado: row.estado ?? "pendiente",
+    vehiculo: unidad ? etiqueta_vehiculo(unidad) : String(row.vehiculo ?? ""),
+    firma,
+    firmado: !!firma.trim(),
+    firmante: String((tipo === "reparacion" ? row.autorizado_por : row.firmante) ?? ""),
+  };
+}
+
+/** Lo que sigue vigente de cada tipo (lo borrado después de enviar no tumba el envío). */
+async function vivos(ctx: KirletCtx, tipo: TipoFirma, ids: string[]): Promise<DomainRow[]> {
+  if (!ids.length) return [];
+  const filas = await ctx.data.findMany(INFO_TIPO[tipo].tabla, { where: { id: { in: ids } }, limit: ids.length });
+  const por_id = new Map(filas.filter((f) => f.is_active !== false).map((f) => [String(f.id), f]));
+  return ids.map((id) => por_id.get(id)).filter((f): f is DomainRow => !!f);
+}
+
 async function vista_envio(
   ctx: KirletCtx,
   envio: DomainRow,
   opts: { incluir_visitas?: boolean } = {},
 ) {
-  const ids = ids_de(envio.bitacora_ids);
+  const ids = ids_envio(envio);
   const bitacoras = [];
-  for (const bitacora of await bitacoras_de(ctx, ids)) {
+  for (const bitacora of ids.bitacora.length ? await bitacoras_de(ctx, ids.bitacora) : []) {
     bitacoras.push(await vista_bitacora(ctx, bitacora));
+  }
+  const reparaciones = [];
+  for (const row of await vivos(ctx, "reparacion", ids.reparacion)) {
+    reparaciones.push(await vista_trabajo(ctx, "reparacion", row));
+  }
+  const mantenimientos = [];
+  for (const row of await vivos(ctx, "mantenimiento", ids.mantenimiento)) {
+    mantenimientos.push(await vista_trabajo(ctx, "mantenimiento", row));
   }
   const visitas = normalizar_visitas(envio.visitas);
   const base = {
     ...envio,
     bitacoras,
+    reparaciones,
+    mantenimientos,
+    resumen: resumen_envio(envio),
     ruta_compartir: compartir_envio(envio).ruta,
     compartir: compartir_envio(envio),
   };
@@ -144,7 +203,30 @@ async function firmar_envio(
     },
   );
   if (!actualizado) throw new KirletHttpError(404, "not_found", "no se pudo firmar");
-  const ids = ids_de(envio.bitacora_ids);
+  const todos = ids_envio(envio);
+  const quien = firmante.trim() || "Público";
+  // Firma única: lo que ya trae firma no se pisa.
+  for (const row of await vivos(ctx, "reparacion", todos.reparacion)) {
+    if (String(row.firma_autoriza ?? "").trim()) continue;
+    const estado = estado_reparacion(row.estado) ?? "pendiente";
+    await ctx.data.update("mantenimiento_correctivo", { id: String(row.id) }, {
+      firma_autoriza: firma.trim(),
+      autorizado_at: ts,
+      autorizado_por: quien,
+      ...(estado === "pendiente" ? { estado: "autorizado" } : {}),
+      updated_at: ts,
+    });
+  }
+  for (const row of await vivos(ctx, "mantenimiento", todos.mantenimiento)) {
+    if (String(row.firma_revisa ?? "").trim()) continue;
+    await ctx.data.update("mantenimiento_preventivo", { id: String(row.id) }, {
+      firma_revisa: firma.trim(),
+      firmado_at: ts,
+      firmante: quien,
+      updated_at: ts,
+    });
+  }
+  const ids = todos.bitacora;
   for (const id of ids) {
     await ctx.data.update(
       "bitacora",
@@ -185,9 +267,24 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     component: "input-checkbox-group",
     label: "Bitácoras a revisar",
     column_span: "full",
-    required: true,
     optionsSource: `${API}/bitacora?as=options&limite=1000`,
     help: "Elige una o más bitácoras. Quien firme lo hace una sola vez para todo el grupo.",
+  },
+  {
+    name: "reparacion_ids",
+    component: "input-checkbox-group",
+    label: "Reparaciones a autorizar",
+    column_span: "full",
+    optionsSource: `${API}/mantenimiento-correctivo?as=options&limite=1000`,
+    help: "Al firmar el envío quedan autorizadas (estatus Autorizado). Las que ya tienen firma no se pueden enviar.",
+  },
+  {
+    name: "mantenimiento_ids",
+    component: "input-checkbox-group",
+    label: "Mantenimientos a revisar",
+    column_span: "full",
+    optionsSource: `${API}/mantenimiento-preventivo?as=options&limite=1000`,
+    help: "Firma de revisión opcional; no cambia su estatus.",
   },
   {
     name: "description",
@@ -199,7 +296,7 @@ const CAMPOS_FORM: FeatureShellFieldDescriptor[] = [
     name: "firma",
     component: "input-signature",
     label: "Firma de revisión (grupo)",
-    help: "Una sola firma aplica a todas las bitácoras del envío.",
+    help: "Una sola firma aplica a todo el envío: bitácoras, reparaciones y mantenimientos.",
   },
   {
     name: "estado",
@@ -232,12 +329,14 @@ export const envio_revision_module = definir_recurso({
   singular: "Envío a revisión",
   plural: "Envíos a revisión",
   order: 35,
-  subtitle: "Manda una o más bitácoras a firmar, por usuario interno o con enlace público",
+  subtitle: "Manda bitácoras, reparaciones o mantenimientos a firmar una sola vez, por usuario interno o con enlace público",
   columns: [
     { name: "modo", type: "text", notNull: true },
     { name: "usuario_id", type: "text" },
     { name: "usuario_nombre", type: "text" },
     { name: "bitacora_ids", type: "json" },
+    { name: "reparacion_ids", type: "json" },
+    { name: "mantenimiento_ids", type: "json" },
     { name: "firma", type: "text" },
     { name: "firmado_at", type: "text" },
     { name: "firmante", type: "text" },
@@ -250,6 +349,8 @@ export const envio_revision_module = definir_recurso({
     usuario_id: { type: "string", search: true },
     usuario_nombre: { type: "string", search: true },
     bitacora_ids: { type: "json" },
+    reparacion_ids: { type: "json" },
+    mantenimiento_ids: { type: "json" },
     firma: { type: "string" },
     firmado_at: { type: "string" },
     firmante: { type: "string", search: true },
@@ -285,7 +386,7 @@ export const envio_revision_module = definir_recurso({
     {
       id: "firmar-envio",
       label: "Firmar revisión",
-      confirm: "Se aplica una sola firma a todas las bitácoras de este envío.",
+      confirm: "Se aplica una sola firma a todo el envío (bitácoras, reparaciones y mantenimientos).",
       method: "POST",
       action: `${API}/envio-revision/:id/firmar`,
     },
@@ -361,10 +462,11 @@ export const envio_revision_module = definir_recurso({
   }),
   hooks: {
     async before_create(ctx, row) {
-      const ids = ids_de(row.bitacora_ids);
-      await bitacoras_de(ctx, ids);
-      await exigir_sin_duplicados(ctx, ids);
-      row.bitacora_ids = ids;
+      const ids = ids_envio(row);
+      await validar_contenido(ctx, ids, { revisar_duplicados: true });
+      row.bitacora_ids = ids.bitacora;
+      row.reparacion_ids = ids.reparacion;
+      row.mantenimiento_ids = ids.mantenimiento;
       const modo = String(row.modo ?? "").trim() as ModoEnvio;
       if (modo !== "interno" && modo !== "publico") {
         throw new KirletHttpError(400, "validation_error", "el modo debe ser interno o publico");
@@ -404,19 +506,28 @@ export const envio_revision_module = definir_recurso({
       }
     },
     async before_update(ctx, row, existing) {
-      if ("bitacora_ids" in row) {
-        const ids = ids_de(row.bitacora_ids);
-        await bitacoras_de(ctx, ids);
+      const toca_ids = "bitacora_ids" in row || "reparacion_ids" in row || "mantenimiento_ids" in row;
+      if (toca_ids) {
+        const ids = ids_envio(row, existing);
         const estado = String(row.estado ?? existing.estado ?? "pendiente");
-        if (estado !== "cancelado") await exigir_sin_duplicados(ctx, ids, String(existing.id));
-        row.bitacora_ids = ids;
+        await validar_contenido(ctx, ids, {
+          excluir_envio: String(existing.id),
+          revisar_duplicados: estado !== "cancelado",
+        });
+        for (const tipo of ["bitacora", "reparacion", "mantenimiento"] as const) {
+          const campo = INFO_TIPO[tipo].campo;
+          if (campo in row) row[campo] = ids[tipo];
+        }
       } else if (
         String(existing.estado ?? "") === "cancelado" &&
         "estado" in row &&
         String(row.estado ?? "") !== "cancelado"
       ) {
-        // Reactivar un cancelado vuelve a retener sus bitácoras.
-        await exigir_sin_duplicados(ctx, ids_de(existing.bitacora_ids), String(existing.id));
+        // Reactivar un cancelado vuelve a retener lo que trae.
+        const ids = ids_envio(existing);
+        for (const tipo of ["bitacora", "reparacion", "mantenimiento"] as const) {
+          await exigir_sin_duplicados(ctx, ids[tipo], String(existing.id), tipo);
+        }
       }
       const modo = String(row.modo ?? existing.modo ?? "").trim();
       if (modo === "interno" && "usuario_id" in row) {

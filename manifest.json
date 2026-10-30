@@ -56,11 +56,11 @@
     },
     {
       "id": "subject.vehiculos.mantenimiento-correctivo.read",
-      "label": "Ver Mantenimientos correctivos"
+      "label": "Ver Reparaciones (mantenimientos correctivos)"
     },
     {
       "id": "subject.vehiculos.mantenimiento-correctivo.write",
-      "label": "Editar Mantenimientos correctivos"
+      "label": "Editar Reparaciones (mantenimientos correctivos)"
     },
     {
       "id": "subject.vehiculos.mantenimiento-preventivo.read",
@@ -165,7 +165,7 @@
         },
         {
           "id": "vehiculos.mantenimiento-correctivo",
-          "label": "Mantenimientos correctivos",
+          "label": "Reparaciones (mantenimientos correctivos)",
           "pageId": "vehiculos.mantenimiento-correctivo",
           "order": 50,
           "path": "mantenimiento-correctivo",
@@ -368,6 +368,7 @@
             "name": "Trabajo",
             "vehiculo": "Vehículo",
             "estado": "Estado",
+            "autorizado_por": "Autorizó",
             "costo": "Costo"
           }
         },
@@ -387,7 +388,8 @@
             "fecha": "Fecha",
             "name": "Trabajo",
             "vehiculo": "Vehículo",
-            "estado": "Estado"
+            "estado": "Estado",
+            "firmante": "Revisó"
           }
         },
         "permission": "subject.vehiculos.mantenimiento-preventivo.read"

@@ -43,6 +43,21 @@ export const SERVICIO_ESTADO_OPTIONS: StatusOption[] = [
   { value: "cumplido", label: "Cumplido", color: "#198754", icon: "fas fa-check-double" },
 ];
 
+/** Reparación: se autoriza con firma antes de trabajarse. */
+export const REPARACION_ESTADO_OPTIONS: StatusOption[] = [
+  { value: "pendiente", label: "Pendiente", color: "#ffc107", icon: "fas fa-hourglass-half" },
+  { value: "autorizado", label: "Autorizado", color: "#0d6efd", icon: "fas fa-signature" },
+  { value: "en_proceso", label: "En proceso", color: "#fd7e14", icon: "fas fa-wrench" },
+  { value: "terminado", label: "Terminado", color: "#198754", icon: "fas fa-check-circle" },
+  { value: "cancelado", label: "Cancelado", color: "#6c757d", icon: "fas fa-ban" },
+];
+
+export const MANTENIMIENTO_ESTADO_OPTIONS: StatusOption[] = [
+  { value: "pendiente", label: "Pendiente", color: "#ffc107", icon: "fas fa-hourglass-half" },
+  { value: "en_proceso", label: "En proceso", color: "#fd7e14", icon: "fas fa-wrench" },
+  { value: "terminado", label: "Terminado", color: "#198754", icon: "fas fa-check-circle" },
+];
+
 export const ENVIO_REVISION_ESTADO_OPTIONS: StatusOption[] = [
   { value: "pendiente", label: "Pendiente", color: "#ffc107", icon: "fas fa-hourglass-half" },
   { value: "firmado", label: "Firmado", color: "#198754", icon: "fas fa-signature" },
@@ -54,8 +69,8 @@ export const STATUS_OPTION_SEEDS: StatusOptionSeed[] = [
   seed("subject-vehiculos/servicio-programado", "estado", SERVICIO_ESTADO_OPTIONS),
   seed("subject-vehiculos/documento-vehiculo", "estado", ESTADO_ABIERTO_CERRADO_OPTIONS),
   seed("subject-vehiculos/falla", "estado", ESTADO_ABIERTO_CERRADO_OPTIONS),
-  seed("subject-vehiculos/mantenimiento-correctivo", "estado", ESTADO_ABIERTO_CERRADO_OPTIONS),
-  seed("subject-vehiculos/mantenimiento-preventivo", "estado", ESTADO_ABIERTO_CERRADO_OPTIONS),
+  seed("subject-vehiculos/mantenimiento-correctivo", "estado", REPARACION_ESTADO_OPTIONS),
+  seed("subject-vehiculos/mantenimiento-preventivo", "estado", MANTENIMIENTO_ESTADO_OPTIONS),
   seed("subject-vehiculos/envio-revision", "estado", ENVIO_REVISION_ESTADO_OPTIONS),
 ];
 

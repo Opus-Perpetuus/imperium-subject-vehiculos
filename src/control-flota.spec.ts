@@ -11,6 +11,7 @@ import {
   cumplir_servicio,
   firma_es_trazo,
   odometro_tras_lecturas,
+  partidas_para_vista,
   sumar_dias,
 } from "./control.ts";
 import { SUBJECT } from "./subject.ts";
@@ -248,7 +249,7 @@ describe("subject de vehículos", () => {
       expect(correctivo.status).toBe(201);
       expect(correctivo.json.data.vehicle_id).toBe(vehicle_id);
       expect(correctivo.json.data.falla_id).toBe(falla_id);
-      expect(correctivo.json.data.estado).toBe("abierto");
+      expect(correctivo.json.data.estado).toBe("pendiente");
       const ligada = await api(server, "GET", `/falla/${falla_id}`);
       expect(ligada.json.data.correctivo_id).toBe(correctivo.json.data.id);
 
@@ -258,11 +259,12 @@ describe("subject de vehículos", () => {
         estado: "abierto",
       });
       expect(preventivo.status).toBe(201);
-      expect(preventivo.json.data.estado).toBe("abierto");
+      // Los valores viejos se traducen al catálogo nuevo.
+      expect(preventivo.json.data.estado).toBe("pendiente");
       const preventivo_cerrado = await api(server, "PATCH", `/mantenimiento-preventivo/${preventivo.json.data.id}`, {
         estado: "cerrado",
       });
-      expect(preventivo_cerrado.json.data.estado).toBe("cerrado");
+      expect(preventivo_cerrado.json.data.estado).toBe("terminado");
 
       const vencido = await api(server, "POST", "/servicio-programado", {
         name: "Afinación vencida",
@@ -839,7 +841,7 @@ describe("subject de vehículos", () => {
       });
       expect(renombra.status).toBe(400);
       const leida = await api(server, "GET", `/bitacora/${id}`);
-      expect(leida.json.data.items).toEqual(resultado.json.data.items);
+      expect(leida.json.data.items).toEqual(partidas_para_vista(resultado.json.data.items));
 
       await api(server, "PATCH", `/plantilla-revision/${plantilla.json.data.id}`, {
         items: [{ concepto: "Frenos" }, presion, { concepto: "Luces" }],
@@ -893,7 +895,7 @@ describe("subject de vehículos", () => {
       });
       const leida = await api(server, "GET", "/bitacora/bitacora-vieja");
       expect(leida.status).toBe(200);
-      expect(leida.json.data.items).toEqual([partida_base("Propia", "pasa")]);
+      expect(leida.json.data.items).toEqual(partidas_para_vista([partida_base("Propia", "pasa")]));
 
       const llenada = await api(server, "PATCH", "/bitacora/bitacora-vieja", {
         items: [{ concepto: "Propia", resultado: "falla", nota: "Revisar" }],
