@@ -14,6 +14,11 @@ export type StatusOptionSeed = {
   module_name?: string;
   status_fields?: string[];
   options: Array<StatusOption & { field_name: string }>;
+  /**
+   * Valores que el núcleo debe quitar del catálogo de `status_fields` (solo
+   * los sembrados, no los que creó el usuario). Un núcleo viejo lo ignora.
+   */
+  retire_values?: string[];
 };
 
 function seed(model_id: string, field_name: string, options: StatusOption[]): StatusOptionSeed {
@@ -74,7 +79,15 @@ export const STATUS_OPTION_SEEDS: StatusOptionSeed[] = [
   seed("subject-vehiculos/envio-revision", "estado", ENVIO_REVISION_ESTADO_OPTIONS),
 ];
 
+/** Las semillas con `retire_values` en los modelos ya migrados (sin valores viejos). */
+export function seeds_con_retiro(limpios: readonly string[], retirar: readonly string[]): StatusOptionSeed[] {
+  const ok = new Set(limpios);
+  return STATUS_OPTION_SEEDS.map((s) => (ok.has(s.model_id) ? { ...s, retire_values: [...retirar] } : s));
+}
+
 export type PushStatusSeedsOptions = {
+  /** Por defecto `STATUS_OPTION_SEEDS`. */
+  entries?: StatusOptionSeed[];
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
   timeout_ms?: number;
@@ -105,7 +118,7 @@ export async function push_status_seeds(opts: PushStatusSeedsOptions = {}): Prom
         "x-core-subject-gateway-secret": secret,
         "x-imperium-subject": caller,
       },
-      body: JSON.stringify({ entries: STATUS_OPTION_SEEDS }),
+      body: JSON.stringify({ entries: opts.entries ?? STATUS_OPTION_SEEDS }),
       signal: AbortSignal.timeout(opts.timeout_ms ?? 12_000),
     });
     let data: unknown = null;

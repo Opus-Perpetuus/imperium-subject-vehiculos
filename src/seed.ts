@@ -2,7 +2,8 @@ import type { KirletDataClient, NoxServices } from "@opus-perpetuus/imperium-cor
 import { new_id, now_iso } from "@opus-perpetuus/imperium-core-kit";
 import { etiqueta_vehiculo } from "./control.ts";
 import { push_general_option_seeds } from "./general-option-seeds.ts";
-import { push_status_seeds } from "./status-seeds.ts";
+import { VALORES_VIEJOS, migrar_estados_viejos } from "./estados-viejos.ts";
+import { push_status_seeds, seeds_con_retiro } from "./status-seeds.ts";
 
 export async function seed_demo(ctx: {
   data: KirletDataClient;
@@ -11,9 +12,17 @@ export async function seed_demo(ctx: {
 }): Promise<void> {
   // Estatus y listas generales en el núcleo (solo agrega faltantes).
   // No bloquea ni tumba el seed de demo.
-  void push_status_seeds().then((r) =>
-    console.log(JSON.stringify({ scope: "seed", msg: "status_seeds", ...r, data: undefined })),
-  );
+  // Antes, los estados viejos (Abierto/Cerrado) de reparaciones y mantenimientos
+  // pasan a los nuevos; donde ya no queda ninguno, el núcleo retira esas opciones.
+  void (async () => {
+    const migracion = await migrar_estados_viejos(ctx.data).catch((err: unknown) => {
+      console.log(JSON.stringify({ scope: "seed", msg: "estados_viejos_error", error: err instanceof Error ? err.message : String(err) }));
+      return null;
+    });
+    if (migracion) console.log(JSON.stringify({ scope: "seed", msg: "estados_viejos", ...migracion }));
+    const r = await push_status_seeds({ entries: seeds_con_retiro(migracion?.limpios ?? [], VALORES_VIEJOS) });
+    console.log(JSON.stringify({ scope: "seed", msg: "status_seeds", ...r, data: undefined }));
+  })();
   void push_general_option_seeds().then((r) =>
     console.log(JSON.stringify({ scope: "seed", msg: "general_option_seeds", ...r, data: undefined })),
   );
