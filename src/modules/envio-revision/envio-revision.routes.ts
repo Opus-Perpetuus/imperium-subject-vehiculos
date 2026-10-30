@@ -10,6 +10,8 @@ import {
   anexar_visita,
   es_error,
   etiqueta_vehiculo,
+  fotos_vehiculo,
+  imagenes_envio,
   normalizar_imagenes,
   normalizar_items,
   normalizar_visitas,
@@ -88,8 +90,10 @@ async function registrar_visita_publica(ctx: KirletCtx, envio: DomainRow): Promi
 
 async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
   const items = partidas_para_firma(bitacora.items);
-  const imagenes = normalizar_imagenes(bitacora.imagenes);
+  const evidencia = normalizar_imagenes(bitacora.imagenes);
   const unidad = await ctx.data.findOne("vehicle", { id: String(bitacora.vehicle_id ?? "") });
+  const imagenes_evidencia = es_error(evidencia) ? [] : evidencia;
+  const imagenes_vehiculo = fotos_vehiculo(unidad?.foto);
   return {
     id: bitacora.id,
     name: bitacora.name,
@@ -100,7 +104,9 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
     vehiculo: unidad ? etiqueta_vehiculo(unidad) : String(bitacora.vehiculo ?? ""),
     items,
     alarmas: items.filter(partida_en_alarma).map((p) => p.concepto),
-    imagenes: es_error(imagenes) ? [] : imagenes,
+    imagenes: imagenes_envio(imagenes_vehiculo, imagenes_evidencia),
+    imagenes_vehiculo,
+    imagenes_evidencia,
     firma_realiza: bitacora.firma_realiza ?? "",
     firma_revisa: bitacora.firma_revisa ?? "",
     revisada: !!bitacora.revisada,
@@ -110,6 +116,7 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
 async function vista_trabajo(ctx: KirletCtx, tipo: "reparacion" | "mantenimiento", row: DomainRow) {
   const unidad = await ctx.data.findOne("vehicle", { id: String(row.vehicle_id ?? "") });
   const firma = String(row[INFO_TIPO[tipo].firma] ?? "");
+  const imagenes_vehiculo = fotos_vehiculo(unidad?.foto);
   return {
     id: row.id,
     tipo,
@@ -123,6 +130,8 @@ async function vista_trabajo(ctx: KirletCtx, tipo: "reparacion" | "mantenimiento
     firma,
     firmado: !!firma.trim(),
     firmante: String((tipo === "reparacion" ? row.autorizado_por : row.firmante) ?? ""),
+    imagenes: imagenes_vehiculo,
+    imagenes_vehiculo,
   };
 }
 

@@ -372,6 +372,32 @@ export function normalizar_imagenes(value: unknown): string[] | ErrorNorm {
   return images;
 }
 
+/**
+ * Fotos del vehículo que se pueden pintar en un `<img>`: data URL de imagen o
+ * URL http(s)/absoluta. `foto` guarda una (texto) y a veces trae un id viejo
+ * de archivo que el navegador no sabe abrir; ese se descarta.
+ */
+export function fotos_vehiculo(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : [value];
+  const fotos: string[] = [];
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    const foto = item.trim();
+    if (!/^(data:image\/|https?:\/\/|\/)/i.test(foto)) continue;
+    if (!fotos.includes(foto)) fotos.push(foto);
+  }
+  return fotos;
+}
+
+/**
+ * Lo que pinta un envío a revisión: primero las fotos del vehículo y luego la
+ * evidencia del registro, sin repetir. El detalle y la página pública ya
+ * muestran `imagenes`; los arreglos separados quedan para quien los distinga.
+ */
+export function imagenes_envio(vehiculo: readonly string[], evidencia: readonly string[]): string[] {
+  return [...new Set([...vehiculo, ...evidencia])];
+}
+
 export function servicio_vista(row: Record<string, unknown>): ServicioVista {
   return {
     estado: row.estado == null ? null : String(row.estado),

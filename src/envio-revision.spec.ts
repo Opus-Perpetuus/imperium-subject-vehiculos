@@ -11,6 +11,8 @@ import {
   anexar_visita,
   texto_visitas,
   visita_desde_headers,
+  fotos_vehiculo,
+  imagenes_envio,
   type PartidaRevision,
 } from "./control.ts";
 import { create_kirlet_test_context, type KirletDefinition } from "@opus-perpetuus/imperium-core-kit";
@@ -258,6 +260,52 @@ describe("visitas al enlace público", () => {
       expect(firma.status).toBe(200);
       expect(firma.json.data.estado).toBe("firmado");
       expect(firma.json.data.visitas).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("imágenes en el envío", () => {
+  test("fotos_vehiculo descarta ids viejos y repetidas", () => {
+    expect(fotos_vehiculo("data:image/png;base64,aaa")).toEqual(["data:image/png;base64,aaa"]);
+    expect(fotos_vehiculo("6a18897a1382a23c9b17cebf")).toEqual([]);
+    expect(fotos_vehiculo(["https://x.test/a.jpg", "https://x.test/a.jpg", null])).toEqual(["https://x.test/a.jpg"]);
+    expect(fotos_vehiculo(undefined)).toEqual([]);
+    expect(imagenes_envio(["data:image/png;base64,v"], ["data:image/png;base64,e", "data:image/png;base64,v"])).toEqual([
+      "data:image/png;base64,v",
+      "data:image/png;base64,e",
+    ]);
+  });
+
+  test("público e interno muestran foto del vehículo y evidencia de cada bitácora", async () => {
+    const server = create_kirlet_test_context(SUBJECT as KirletDefinition);
+    const foto = "data:image/jpeg;base64,VEHICULO";
+    const evidencia = ["data:image/png;base64,EVID1", "data:image/png;base64,EVID2"];
+    try {
+      const unidad = await api(server, "POST", "/vehicle", { name: "Unidad fotos", placas: "FOT-01", foto });
+      expect(unidad.status).toBe(201);
+      const plantilla = await api(server, "POST", "/plantilla-revision", { name: "Plantilla fotos", conceptos: "Frenos" });
+      expect(plantilla.status).toBe(201);
+      const bit = await api(server, "POST", "/bitacora", {
+        name: "Bit fotos",
+        vehicle_id: unidad.json.data.id,
+        plantilla_id: plantilla.json.data.id,
+        imagenes: evidencia,
+      });
+      expect(bit.status).toBe(201);
+      const publico = await api(server, "POST", `/bitacora/${bit.json.data.id}/enviar-revision-publica`, {});
+      expect(publico.status).toBe(201);
+      const id = publico.json.data.id;
+
+      for (const ruta of [`/envio-revision/publico/${id}`, `/envio-revision/${id}`]) {
+        const r = await api(server, "GET", ruta);
+        expect(r.status).toBe(200);
+        const b = r.json.data.bitacoras[0];
+        expect(b.imagenes).toEqual([foto, ...evidencia]);
+        expect(b.imagenes_vehiculo).toEqual([foto]);
+        expect(b.imagenes_evidencia).toEqual(evidencia);
+      }
     } finally {
       server.stop();
     }
