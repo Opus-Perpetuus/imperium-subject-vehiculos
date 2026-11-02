@@ -1,3 +1,4 @@
+import { foto_completa } from "../../foto-vehiculo.ts";
 import {
   KirletHttpError,
   new_id,
@@ -93,7 +94,7 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
   const evidencia = normalizar_imagenes(bitacora.imagenes);
   const unidad = await ctx.data.findOne("vehicle", { id: String(bitacora.vehicle_id ?? "") });
   const imagenes_evidencia = es_error(evidencia) ? [] : evidencia;
-  const imagenes_vehiculo = fotos_vehiculo(unidad?.foto);
+  const imagenes_vehiculo = fotos_vehiculo(await foto_completa(ctx.data, unidad));
   return {
     id: bitacora.id,
     name: bitacora.name,
@@ -116,7 +117,7 @@ async function vista_bitacora(ctx: KirletCtx, bitacora: DomainRow) {
 async function vista_trabajo(ctx: KirletCtx, tipo: "reparacion" | "mantenimiento", row: DomainRow) {
   const unidad = await ctx.data.findOne("vehicle", { id: String(row.vehicle_id ?? "") });
   const firma = String(row[INFO_TIPO[tipo].firma] ?? "");
-  const imagenes_vehiculo = fotos_vehiculo(unidad?.foto);
+  const imagenes_vehiculo = fotos_vehiculo(await foto_completa(ctx.data, unidad));
   return {
     id: row.id,
     tipo,

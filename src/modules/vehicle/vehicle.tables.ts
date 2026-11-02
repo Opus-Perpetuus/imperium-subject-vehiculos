@@ -17,6 +17,7 @@ export const vehicle_tables: KirletTableDecl[] = [
       { name: "created_at", type: "text", notNull: true },
       { name: "updated_at", type: "text", notNull: true },
       { name: "foto", type: "text" },
+      { name: "foto_hash", type: "text" },
       { name: "placas", type: "text" },
       { name: "numero_economico", type: "text" },
       { name: "marca", type: "text" },
@@ -38,6 +39,17 @@ export const vehicle_tables: KirletTableDecl[] = [
     indexes: [
       { name: "idx_vehicle_name", columns: ["name"] },
       { name: "idx_vehicle_active", columns: ["is_active"] },
+    ],
+  },
+  {
+    // La foto completa, fuera de la fila del padrón (ver foto-vehiculo.ts).
+    name: "vehicle_foto",
+    columns: [
+      { name: "id", type: "text", primaryKey: true },
+      { name: "data", type: "text", notNull: true },
+      { name: "hash", type: "text", notNull: true },
+      { name: "created_at", type: "text", notNull: true },
+      { name: "updated_at", type: "text", notNull: true },
     ],
   },
 ];

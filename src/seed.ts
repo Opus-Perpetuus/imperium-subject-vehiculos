@@ -3,6 +3,7 @@ import { new_id, now_iso } from "@opus-perpetuus/imperium-core-kit";
 import { etiqueta_vehiculo } from "./control.ts";
 import { push_general_option_seeds } from "./general-option-seeds.ts";
 import { VALORES_VIEJOS, migrar_estados_viejos } from "./estados-viejos.ts";
+import { migrar_fotos } from "./foto-vehiculo.ts";
 import { push_status_seeds, seeds_con_retiro } from "./status-seeds.ts";
 
 export async function seed_demo(ctx: {
@@ -23,6 +24,12 @@ export async function seed_demo(ctx: {
     const r = await push_status_seeds({ entries: seeds_con_retiro(migracion?.limpios ?? [], VALORES_VIEJOS) });
     console.log(JSON.stringify({ scope: "seed", msg: "status_seeds", ...r, data: undefined }));
   })();
+  // Fotos embebidas en `vehicle` pasan a `vehicle_foto` (idempotente).
+  void migrar_fotos(ctx.data)
+    .then((r) => console.log(JSON.stringify({ scope: "seed", msg: "fotos_vehiculo", ...r })))
+    .catch((err: unknown) =>
+      console.log(JSON.stringify({ scope: "seed", msg: "fotos_vehiculo_error", error: err instanceof Error ? err.message : String(err) })),
+    );
   void push_general_option_seeds().then((r) =>
     console.log(JSON.stringify({ scope: "seed", msg: "general_option_seeds", ...r, data: undefined })),
   );

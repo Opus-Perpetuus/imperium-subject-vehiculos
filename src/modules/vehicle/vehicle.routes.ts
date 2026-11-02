@@ -11,6 +11,7 @@ import { paginar } from "../../listado.ts";
 import { periodo_de, reporte_flota } from "../../reporte.ts";
 import { cambios_de_clave, duplicado, limpiar_vehiculo, linea_de_tiempo } from "../../vehiculo.ts";
 import { lectura_con_nombre, pagina_lista } from "../../recurso.ts";
+import { fila_sin_foto, foto_completa, responder_foto, separar_foto } from "../../foto-vehiculo.ts";
 import { vehicle_pages } from "./vehicle.pages.ts";
 import { vehicle_tables } from "./vehicle.tables.ts";
 
@@ -27,6 +28,42 @@ async function validar(
   const activos = await ctx.data.findMany("vehicle", { limit: 10000 });
   const choque = duplicado(cambios, activos, existing ? String(existing.id) : undefined);
   if (choque) throw new KirletHttpError(409, "conflict", choque.mensaje);
+}
+
+type Cuerpo = { data?: unknown };
+
+/** Lista sin base64 (con `foto_url`); el detalle con la foto completa. */
+function con_foto_aparte(routes: ReturnType<typeof define_crud>): ReturnType<typeof define_crud> {
+  return routes.map((route) => {
+    const handler = route.handler as (ctx: KirletCtx) => Promise<unknown>;
+    if (route.pattern === "GET /vehicle") {
+      return {
+        ...route,
+        handler: async (ctx: KirletCtx) => {
+          const body = (await handler(ctx)) as Cuerpo;
+          if (!body || !Array.isArray(body.data)) return body;
+          return {
+            ...body,
+            data: body.data.map((row) => (row && typeof row === "object" && "id" in row ? fila_sin_foto(row as DomainRow) : row)),
+          };
+        },
+      };
+    }
+    if (route.pattern === "GET /vehicle/:id" || route.pattern === "PATCH /vehicle/:id" || route.pattern === "POST /vehicle") {
+      return {
+        ...route,
+        handler: async (ctx: KirletCtx) => {
+          const res = await handler(ctx);
+          const body = (res instanceof Response ? await res.clone().json().catch(() => null) : res) as Cuerpo | null;
+          if (!body || !body.data || typeof body.data !== "object" || Array.isArray(body.data)) return res;
+          const row = body.data as DomainRow;
+          const data = { ...fila_sin_foto(row), foto: await foto_completa(ctx.data, row) };
+          return res instanceof Response ? new Response(JSON.stringify({ ...body, data }), { status: res.status, headers: res.headers }) : { ...body, data };
+        },
+      };
+    }
+    return route;
+  });
 }
 
 const vehicle_crud = define_crud({
@@ -47,7 +84,8 @@ const vehicle_crud = define_crud({
       created_by: { type: "string" },
       custom_data: { type: "json" },
       payload: { type: "json" },
-      foto: { type: "string", search: true },
+      foto: { type: "string" },
+      foto_hash: { type: "string", create: false, update: false, sortable: false },
       placas: { type: "string", search: true },
       numero_economico: { type: "string", search: true },
       marca: { type: "string", search: true },
@@ -67,14 +105,17 @@ const vehicle_crud = define_crud({
       etiqueta: { type: "string", search: true },
     },
     options_map: { value: "id", label: "etiqueta" },
+    redact_history: (row) => ("foto" in row && row.foto ? { ...row, foto: "[foto]" } : row),
     hooks: {
       async before_create(ctx, row) {
         await validar(ctx, row);
+        await separar_foto(ctx.data, String(row.id), row);
         row.etiqueta = etiqueta_vehiculo(row);
         return row;
       },
       async before_update(ctx, id, patch, existing) {
         await validar(ctx, patch, { ...existing, id });
+        await separar_foto(ctx.data, id, patch);
         patch.etiqueta = etiqueta_vehiculo({ ...existing, ...patch });
         return patch;
       },
@@ -120,6 +161,7 @@ export const vehicle_module = define_module({
         });
         return { ...paginar(renglones, ctx.list_query()), totales, periodo };
       },
+      "GET /vehicle/:id/foto": responder_foto,
       "GET /vehicle/:id/historial": async (ctx) => {
         const vehicle = await ctx.data.findOne("vehicle", { id: ctx.params.id });
         if (!vehicle || vehicle.is_active === false) return ctx.not_found();
@@ -156,7 +198,7 @@ export const vehicle_module = define_module({
         };
       },
     }),
-    ...lectura_con_nombre(vehicle_crud, "vehicle", "unidad"),
+    ...con_foto_aparte(lectura_con_nombre(vehicle_crud, "vehicle", "unidad")),
   ],
   tables: vehicle_tables,
   pages: [
