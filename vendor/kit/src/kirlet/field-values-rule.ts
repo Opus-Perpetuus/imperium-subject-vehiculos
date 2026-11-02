@@ -18,14 +18,22 @@ export function snake_field_name(field: string): string {
 const CREDENTIAL_WORDS = [
   "password", "passwd", "pwd", "pass", "secret", "secrets", "token", "tokens",
   "api_key", "apikey", "private_key", "secret_key", "credential", "credentials", "pin",
+  "contrasena", "contraseña", "contrasenas", "contraseñas",
+  // Medios de pago.
+  "tarjeta", "tarjetas", "card_number", "cvv", "cvc", "iban",
 ];
 
 /** PII: identificadores fiscales y bancarios, firmas, contacto, domicilio, nacimiento, salario, coordenadas. */
 const PII_WORDS = [
   "rfc", "curp", "nss", "clabe", "firma", "firmas", "signature", "signatures",
+  "ine", "pasaporte", "passport",
   "email", "emails", "e_mail", "correo", "phone", "telefono", "celular", "movil", "mobile",
+  "tel", "cel", "whatsapp",
   "domicilio", "direccion", "address",
-  "nacimiento", "birth", "birthday", "birthdate", "dob",
+  // Domicilio partido.
+  "calle", "colonia", "codigo_postal", "postal_code", "zip", "zip_code", "cp",
+  "numero_exterior", "num_ext", "numero_interior", "num_int",
+  "nacimiento", "fecha_nac", "birth", "birthday", "birthdate", "dob",
   "salario", "salary", "sueldo",
   "lat", "lng", "lon", "latitude", "longitude", "latitud", "longitud",
   "coords", "coordinates", "coordenadas",
@@ -39,13 +47,33 @@ const WHOLE_NAMES = new Set([
 
 /**
  * Último segmento que describe al dato sin ser el dato: `pin_type`,
- * `token_type`, `pin_length`, `reset_password_kind`, `domicilio_id`,
- * `whatsapp_activo`. `token_value` y `pin_hash` no entran: son el secreto.
+ * `token_type`, `pin_length`, `reset_password_kind`, `whatsapp_activo`.
+ * `token_value` y `pin_hash` no entran: son el secreto.
  */
 const METADATA_SUFFIXES = new Set([
   "type", "types", "kind", "length", "len", "version", "count", "format", "mode",
-  "id", "ids", "ref", "activo", "active", "enabled", "required", "expires", "at",
+  "activo", "active", "enabled", "required", "expires", "at", "plantilla", "template",
 ]);
+
+/**
+ * `_id`/`_ref` solo liberan una FK real (ref en el schema): `domicilio_id`
+ * con ref al directorio sí; `email_ref`, `secret_ref` o `rfc_id` sueltos
+ * guardan el dato mismo y siguen negados.
+ */
+const KEY_SUFFIXES = new Set(["id", "ids", "ref", "refs"]);
+
+/**
+ * Ubicación: suelta (`ubicacion`, `contacto_ubicacion`, `location`) puede ser
+ * dirección o coordenadas; con sufijo (`ubicacion_codigo`, `ubicacion_destino`)
+ * es el catálogo de almacén y pasa. `*_home` (`partner_home`, `client_home`) es
+ * domicilio; `home_page` no.
+ */
+const BARE_PLACE_RE = /(^|_)(ubicacion|ubicaciones|location|locations|geo|geolocation|geolocalizacion|home)$/;
+
+export type FieldNameOptions = {
+  /** El campo es una FK real (ref en el schema). */
+  is_reference?: boolean;
+};
 
 /** Blobs json por nombre: configuración con credenciales o documentos enteros. */
 export const JSON_BLOB_FIELDS: ReadonlySet<string> = new Set(["config_json", "custom_data", "payload", "spec_json"]);
@@ -57,7 +85,7 @@ const CREDENTIAL_RE = word_re(CREDENTIAL_WORDS);
 const PII_RE = word_re(PII_WORDS);
 
 /** Un segmento (sin puntos) que por su nombre no admite field-values. */
-export function field_name_denied(field: string): boolean {
+export function field_name_denied(field: string, opts: FieldNameOptions = {}): boolean {
   const snake = snake_field_name(field);
   if (!snake) return false;
   if (JSON_BLOB_FIELDS.has(snake) || snake.endsWith("_json")) return true;
@@ -65,6 +93,7 @@ export function field_name_denied(field: string): boolean {
   const parts = snake.split("_").filter(Boolean);
   const last = parts[parts.length - 1] ?? "";
   if (parts.length > 1 && METADATA_SUFFIXES.has(last)) return false;
-  return CREDENTIAL_RE.test(snake) || PII_RE.test(snake);
+  if (parts.length > 1 && KEY_SUFFIXES.has(last) && opts.is_reference === true) return false;
+  return CREDENTIAL_RE.test(snake) || PII_RE.test(snake) || BARE_PLACE_RE.test(snake);
 }
 //   #endregion

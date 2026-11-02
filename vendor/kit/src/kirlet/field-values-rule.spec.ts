@@ -13,9 +13,11 @@ describe("field_name_denied: credenciales, PII y blobs; no metadatos", () => {
   test("metadatos y hashes de contenido NO se niegan", () => {
     for (const f of [
       "pin_type", "pin_length", "pin_version", "token_type", "reset_password_kind", "reset_password_expires",
-      "html_element_hash", "foto_hash", "hash", "event_type", "domicilio_id", "whatsapp_activo",
-      "tokenizer_model", "firmado_at", "pinned", "passport_no", "nssa", "clientName", "estado", "banco",
-      "ubicacion", "ubicacion_destino", "cuenta_contable", "direccionamiento",
+      "html_element_hash", "foto_hash", "hash", "event_type", "whatsapp_activo", "whatsapp_plantilla",
+      "tokenizer_model", "firmado_at", "pinned", "passenger_no", "nssa", "clientName", "estado", "banco",
+      "ubicacion_destino", "ubicacion_codigo", "ubicacion_id", "ubicacion_preferida", "cuenta_contable", "direccionamiento",
+      "clave", "clave_unidad", "clave_prod_serv", "codigo", "codigo_barras", "num_empleado", "numero_economico",
+      "num_intentos", "hotel", "celda", "linea", "home_page",
     ]) expect([f, field_name_denied(f)]).toEqual([f, false]);
   });
 
@@ -44,5 +46,32 @@ describe("field_name_denied: credenciales, PII y blobs; no metadatos", () => {
     expect(field_values_denied("pin_type", { type: "string" })).toBe(false);
     expect(field_values_denied("pin_type", { type: "string", secret: true })).toBe(true);
     expect(field_values_denied("foto", { type: "string", list: false })).toBe(true);
+  });
+
+  test("domicilio partido, whatsapp, ubicación suelta, *_home y documentos/pagos", () => {
+    for (const f of [
+      "calle", "colonia", "codigo_postal", "postal_code", "cp", "domicilio_cp", "numero_exterior", "num_ext",
+      "numero_interior", "num_int", "whatsapp", "whatsapp_numero", "ubicacion", "contacto_ubicacion", "location",
+      "partner_home", "client_home", "home", "contrasena", "contraseña", "nueva_contrasena", "tarjeta",
+      "numero_tarjeta", "card_number", "cardNumber", "cvv", "iban", "ine", "clave_ine", "pasaporte", "passport_no",
+      "fecha_nac", "tel", "tel_casa", "cel", "contacto_cel",
+    ]) expect([f, field_name_denied(f)]).toEqual([f, true]);
+  });
+
+  test("_id/_ref no liberan un nombre sensible salvo FK real (ref en el schema)", () => {
+    for (const f of ["email_ref", "secret_ref", "lat_ref", "rfc_id", "domicilio_id", "token_ids", "telefono_id"]) {
+      expect([f, field_name_denied(f)]).toEqual([f, true]);
+      expect([f, field_name_denied(f, { is_reference: false })]).toEqual([f, true]);
+    }
+    // Con ref en el schema el `_id` es la llave, no el dato.
+    expect(field_name_denied("domicilio_id", { is_reference: true })).toBe(false);
+    expect(field_name_denied("rfc_id", { is_reference: true })).toBe(false);
+    // Una FK no abre el sufijo que no es llave.
+    expect(field_name_denied("rfc_value", { is_reference: true })).toBe(true);
+    // FK reales de pos/promociones/sync (Marketo) y `ref` siguen pasando, con o sin declarar.
+    for (const f of ["partner_id", "product_id", "provider_id", "ref", "_ref", "user_id", "ubicacion_origen_id"]) {
+      expect([f, field_name_denied(f)]).toEqual([f, false]);
+      expect([f, field_name_denied(f, { is_reference: true })]).toEqual([f, false]);
+    }
   });
 });

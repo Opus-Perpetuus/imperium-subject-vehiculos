@@ -83,7 +83,10 @@ describe("field-values no lista credenciales ni blobs json", () => {
     expect(field_values_denied("foto", { type: "string", list: false })).toBe(true);
     expect(field_values_denied("foto", { type: "string", list: false, field_values: true })).toBe(false);
     expect(field_values_denied("foto", { type: "string" })).toBe(false);
-    for (const field of ["firmado_at", "rfcs_count_x", "nssa", "passport_no", "clientName", "pinned"]) {
+    // `_id`/`_ref` con nombre sensible: solo pasa si el spec declara la FK.
+    expect(field_values_denied("domicilio_id", { type: "string" })).toBe(true);
+    expect(field_values_denied("domicilio_id", { type: "string", ref: "herr-domicilios" })).toBe(false);
+    for (const field of ["firmado_at", "rfcs_count_x", "nssa", "passenger_no", "clientName", "pinned"]) {
       expect(field_values_denied(field, { type: "string" })).toBe(false);
     }
   });

@@ -32,9 +32,14 @@ export type CrudFieldSpec = {
    * adjuntos en base64. El detalle (`GET /recurso/:id`) lo sigue entregando.
    */
   list?: boolean;
+  /**
+   * FK real: recurso/tabla al que apunta. Un `_id`/`_ref` con nombre sensible
+   * (`domicilio_id`) solo admite field-values si lo declara.
+   */
+  ref?: string;
 };
 
-export { field_name_denied, JSON_BLOB_FIELDS, snake_field_name } from "./field-values-rule.js";
+export { field_name_denied, JSON_BLOB_FIELDS, snake_field_name, type FieldNameOptions } from "./field-values-rule.js";
 
 /**
  * `field-values` devuelve los valores distintos de una columna a quien tenga
@@ -45,7 +50,7 @@ export function field_values_denied(field: string, spec: CrudFieldSpec | undefin
   if (spec?.field_values === true) return false;
   // `list: false` marca fotos, firmas y adjuntos: tampoco salen por field-values.
   if (spec?.secret === true || spec?.list === false || spec?.type === "json") return true;
-  return field_name_denied(field);
+  return field_name_denied(field, { is_reference: Boolean(spec?.ref) });
 }
 
 export type CrudHooks = {
