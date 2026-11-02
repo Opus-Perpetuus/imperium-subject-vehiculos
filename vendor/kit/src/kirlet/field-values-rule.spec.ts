@@ -74,4 +74,22 @@ describe("field_name_denied: credenciales, PII y blobs; no metadatos", () => {
       expect([f, field_name_denied(f, { is_reference: true })]).toEqual([f, false]);
     }
   });
+
+  test("fase 3b: plantilla con credencial, cuenta bancaria compuesta, zip/home y booleanos", () => {
+    for (const f of [
+      "password_template", "token_plantilla", "pin_template", "secret_templates", "contrasena_plantilla",
+      "banco_cuenta", "cuenta_deposito", "cuenta_bancaria", "numero_cuenta", "bank_account_no", "account_number",
+      "cuenta_clabe", "zip", "billing_zip", "zip_code", "home", "partner_home",
+    ]) expect([f, field_name_denied(f)]).toEqual([f, true]);
+    for (const f of [
+      "whatsapp_plantilla", "anuncio_plantilla", "email_template", "is_template", "track_url_template",
+      "cuenta_contable", "cuentas_contables", "banco", "banco_nombre", "libro_cuentas", "zip_file", "home_page",
+    ]) expect([f, field_name_denied(f)]).toEqual([f, false]);
+    // Un booleano no revela el dato: `home`, `has_pin`, `password_set`.
+    for (const f of ["home", "has_pin", "password_set", "whatsapp"]) {
+      expect([f, field_name_denied(f, { is_boolean: true })]).toEqual([f, false]);
+    }
+    // Pero un blob json no se abre por ser booleano.
+    expect(field_name_denied("payload", { is_boolean: true })).toBe(true);
+  });
 });

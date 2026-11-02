@@ -50,7 +50,7 @@ export function field_values_denied(field: string, spec: CrudFieldSpec | undefin
   if (spec?.field_values === true) return false;
   // `list: false` marca fotos, firmas y adjuntos: tampoco salen por field-values.
   if (spec?.secret === true || spec?.list === false || spec?.type === "json") return true;
-  return field_name_denied(field, { is_reference: Boolean(spec?.ref) });
+  return field_name_denied(field, { is_reference: Boolean(spec?.ref), is_boolean: spec?.type === "boolean" });
 }
 
 export type CrudHooks = {

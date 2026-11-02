@@ -195,3 +195,89 @@ describe("define_crud: campos fuera de la lista", () => {
     expect(one.data.foto).toBe("data:image/png;base64,AAAA");
   });
 });
+
+describe("field-values: FK real y booleanos por todos los caminos del kit", () => {
+  const envios_table = {
+    name: "envios",
+    columns: [
+      { name: "id", type: "text" as const, primaryKey: true },
+      { name: "domicilio_id", type: "text" as const },
+      { name: "cliente_domicilio_id", type: "text" as const },
+      { name: "home", type: "boolean" as const },
+      { name: "zip_file", type: "text" as const },
+      { name: "created_at", type: "timestamptz" as const },
+      { name: "updated_at", type: "timestamptz" as const },
+    ],
+  };
+  function envios() {
+    return define_kirlet({
+      id: "KIRLET-envios",
+      name: "Envios",
+      version: "0.1.0",
+      image: "kirel/kirlet-envios:0.1.0",
+      compat: { nox: ">=0.5.0", kit: "^0.5.0" },
+      schema_version: 2,
+      modules: [
+        define_module({
+          resource: "envios",
+          labels: { singular: "Envío", plural: "Envíos" },
+          routes: define_crud({
+            resource: "envios",
+            table: "envios",
+            fields: {
+              domicilio_id: { type: "string", ref: "herr-domicilios" },
+              cliente_domicilio_id: { type: "string" },
+              home: { type: "boolean" },
+              zip_file: { type: "string" },
+            },
+          }),
+          tables: [envios_table],
+          pages: [],
+        }),
+      ],
+    });
+  }
+
+  test("la lista (fv_denied) y el endpoint respetan ref y booleano", async () => {
+    const server = create_kirlet_test_context(envios(), { auth_disabled: true });
+    const created = await server.fetch(
+      new Request("http://t/envios", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ domicilio_id: "domic-1", cliente_domicilio_id: "Calle 1", home: true, zip_file: "a.zip" }),
+      }),
+    );
+    expect(created.status).toBeLessThan(300);
+    const list = (await (await server.fetch(new Request("http://t/envios"))).json()) as { fv_denied: string[] };
+    expect(list.fv_denied).toEqual(["cliente_domicilio_id"]);
+    for (const [field, status] of [["domicilio_id", 200], ["home", 200], ["zip_file", 200], ["cliente_domicilio_id", 400]] as const) {
+      const res = await server.fetch(new Request(`http://t/envios/field-values/${field}`));
+      expect([field, res.status]).toEqual([field, status]);
+    }
+    server.stop();
+  });
+
+  test("todo caller del kit pasa el spec del campo (ref/type) a la regla", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const dir = import.meta.dir;
+    const calls: string[] = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".ts") || file.endsWith(".spec.ts")) continue;
+      const src = readFileSync(join(dir, file), "utf8");
+      for (const m of src.matchAll(/\bfield_name_denied\(([^\n]*)/g)) {
+        if (/export function/.test(src.slice(Math.max(0, (m.index ?? 0) - 20), m.index))) continue;
+        calls.push(`${file}: field_name_denied(${m[1]})`);
+      }
+      for (const m of src.matchAll(/\bfield_values_denied\(([^\n]*)/g)) {
+        if (/export function/.test(src.slice(Math.max(0, (m.index ?? 0) - 20), m.index))) continue;
+        calls.push(`${file}: field_values_denied(${m[1]})`);
+      }
+    }
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      const ok = /field_name_denied\(.*is_reference.*is_boolean/.test(call) || /field_values_denied\(\w+, fields\[\w+\]\)/.test(call);
+      expect([call, ok]).toEqual([call, true]);
+    }
+  });
+});
