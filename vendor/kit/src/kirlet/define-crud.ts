@@ -2,6 +2,7 @@
 
 import { new_id, now_iso } from "./http.js";
 import { KirletHttpError } from "./errors.js";
+import { field_name_denied } from "./field-values-rule.js";
 import { define_routes, type KirletRouteTable, type KirletCtx } from "./define-module.js";
 import type { DomainRow, FindManyOptions } from "./data-client.js";
 
@@ -33,25 +34,7 @@ export type CrudFieldSpec = {
   list?: boolean;
 };
 
-/**
- * Nombres de credencial (`password`, `api_key`, `token_hash`, `client_secret`…)
- * y PII que no se lista a cualquiera con lectura (`rfc`, `curp`, `nss`, `clabe`,
- * firmas). Se evalúa sobre el nombre en snake_case: `clientSecret`,
- * `accessToken`, `apiKey` y `pinHash` caen igual que su forma con guion bajo.
- */
-const SENSITIVE_FIELD_RE =
-  /(^|_)(password|passwd|pwd|pass|secret|secrets|token|tokens|api_?key|private_?key|secret_?key|credential|credentials|hash|pin|rfc|curp|nss|clabe|firma|firmas|signature|signatures)(_|$)/i;
-
-/** `clientSecret` → `client_secret`; `APIKey` → `api_key`. */
-export function snake_field_name(field: string): string {
-  return field
-    .replace(/([A-Z]+)([A-Z][a-z0-9])/g, "$1_$2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .toLowerCase();
-}
-
-/** Blobs JSON que suelen llevar configuración con credenciales. */
-const JSON_BLOB_FIELDS = new Set(["config_json", "custom_data", "payload", "spec_json"]);
+export { field_name_denied, JSON_BLOB_FIELDS, snake_field_name } from "./field-values-rule.js";
 
 /**
  * `field-values` devuelve los valores distintos de una columna a quien tenga
@@ -62,8 +45,7 @@ export function field_values_denied(field: string, spec: CrudFieldSpec | undefin
   if (spec?.field_values === true) return false;
   // `list: false` marca fotos, firmas y adjuntos: tampoco salen por field-values.
   if (spec?.secret === true || spec?.list === false || spec?.type === "json") return true;
-  const snake = snake_field_name(field);
-  return JSON_BLOB_FIELDS.has(snake) || SENSITIVE_FIELD_RE.test(snake);
+  return field_name_denied(field);
 }
 
 export type CrudHooks = {
@@ -254,6 +236,8 @@ export function define_crud(opts: DefineCrudOptions): KirletRouteTable {
   const id_prefix = opts.id_prefix ?? resource.replace(/s$/, "").slice(0, 8);
   const unknown_to_payload = opts.unknown_to_payload === true || opts.imperium === true;
   const imperium = opts.imperium !== false;
+  /** Columnas sin field-values: el filtro de la lista pasa a texto libre. */
+  const fv_denied = Object.keys(fields).filter((name) => field_values_denied(name, fields[name]));
 
   const history_resource = (ctx: KirletCtx) => {
     // full resource id filled by serve layer via slug; here use relative name
@@ -377,7 +361,7 @@ export function define_crud(opts: DefineCrudOptions): KirletRouteTable {
             return copy;
           })
         : rows;
-      return { data, total_elementos: total, message: "Ruta encontrada" };
+      return { data, total_elementos: total, message: "Ruta encontrada", fv_denied };
     },
 
     ...(imperium
@@ -414,7 +398,14 @@ export function define_crud(opts: DefineCrudOptions): KirletRouteTable {
               );
             }
             const termino = String(ctx.query.get("termino") ?? "");
-            const values = await ctx.data.distinct(table, field, termino);
+            // Igual que la lista: sin `include_inactive`, solo filas activas.
+            const include_inactive = ctx.query.get("include_inactive") === "1" ||
+              ctx.query.get("include_inactive") === "true" ||
+              ctx.query.get("show_archived") === "true";
+            const where: FindManyOptions["where"] = soft && !include_inactive
+              ? { [soft_field]: active_val as string | number | boolean }
+              : undefined;
+            const values = await ctx.data.distinct(table, field, termino, where);
             const data = values.map((value) => ({
               value,
               label: String(value),

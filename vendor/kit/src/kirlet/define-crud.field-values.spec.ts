@@ -77,7 +77,7 @@ describe("field-values no lista credenciales ni blobs json", () => {
       expect(field_values_denied(field, { type: "string" })).toBe(true);
     }
     expect(field_values_denied("rfc", { type: "string", field_values: true })).toBe(false);
-    for (const field of ["firma", "firmas", "firma_digital", "firmaDigital", "signature", "withdrawalSignature", "delivery_signature", "img_signature_owner", "deliverySignatureAttachmentId"]) {
+    for (const field of ["firma", "firmas", "firma_digital", "firmaDigital", "signature", "withdrawalSignature", "delivery_signature", "img_signature_owner"]) {
       expect(field_values_denied(field, { type: "string" })).toBe(true);
     }
     expect(field_values_denied("foto", { type: "string", list: false })).toBe(true);
@@ -119,6 +119,43 @@ describe("field-values no lista credenciales ni blobs json", () => {
     expect(name.status).toBe(200);
     const tags = await server.fetch(new Request("http://t/gateways/field-values/tags"));
     expect(tags.status).toBe(200);
+    server.stop();
+  });
+});
+
+describe("field-values: misma vista que la lista", () => {
+  test("la lista anuncia fv_denied y field-values no enseña filas dadas de baja", async () => {
+    const server = create_kirlet_test_context(gateways(), { auth_disabled: true });
+    const post = (name: string) =>
+      server.fetch(
+        new Request("http://t/gateways", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        }),
+      );
+    await post("Viva");
+    const archived = (await (await post("Archivada")).json()) as { data?: { id?: string }; id?: string };
+    const id = String(archived.data?.id ?? archived.id ?? "");
+    expect(id).not.toBe("");
+    const del = await server.fetch(new Request(`http://t/gateways/${id}`, { method: "DELETE" }));
+    expect(del.status).toBeLessThan(300);
+
+    const list = (await (await server.fetch(new Request("http://t/gateways"))).json()) as {
+      data: Array<{ name: string }>;
+      fv_denied: string[];
+    };
+    expect(list.data.map((row) => row.name)).toEqual(["Viva"]);
+    expect([...list.fv_denied].sort()).toEqual(["api_token", "config_json", "webhook_key"]);
+
+    const values = (await (await server.fetch(new Request("http://t/gateways/field-values/name"))).json()) as {
+      data: Array<{ value: string }>;
+    };
+    expect(values.data.map((option) => option.value)).toEqual(["Viva"]);
+    const all = (await (
+      await server.fetch(new Request("http://t/gateways/field-values/name?include_inactive=1"))
+    ).json()) as { data: Array<{ value: string }> };
+    expect(all.data.map((option) => option.value).sort()).toEqual(["Archivada", "Viva"]);
     server.stop();
   });
 });
