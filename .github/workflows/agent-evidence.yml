@@ -1,0 +1,61 @@
+name: agent-evidence
+on:
+  pull_request:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Generar el manifiesto de la punta del PR
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+
+          pedido = os.environ["HEAD_SHA"]
+          checkout = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          if checkout != pedido:
+              sys.exit(f"checkout {checkout} distinto de la punta pedida {pedido}")
+          run_path = Path("evidence/run.json")
+          if not run_path.is_file():
+              sys.exit("falta evidence/run.json")
+          data = json.loads(run_path.read_text())
+          if "sha" in data:
+              sys.exit("evidence/run.json trae sha; lo escribe el job")
+          feature = data.get("feature")
+          action = data.get("action")
+          result = data.get("result")
+          artifacts = data.get("artifacts")
+          for campo, valor in ("feature", feature), ("action", action), ("result", result):
+              if not isinstance(valor, str) or not valor.strip() or "<" in valor:
+                  sys.exit(f"{campo} vacío o sin rellenar")
+          if not isinstance(artifacts, list) or not artifacts:
+              sys.exit("artifacts vacío")
+          for item in artifacts:
+              if not isinstance(item, str) or not Path(item).is_file():
+                  sys.exit(f"artefacto ausente: {item}")
+          manifest = {
+              "sha": checkout,
+              "feature": feature,
+              "action": action,
+              "result": result,
+              "artifacts": artifacts,
+          }
+          Path("evidence/manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n"
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-evidence
+          path: evidence/manifest.json
+          if-no-files-found: error
